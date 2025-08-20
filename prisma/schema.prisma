@@ -1,0 +1,155 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String   @db.VarChar(100)
+  role         String   @default("user") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  campaigns     Campaign[]
+  emailLists    EmailList[]
+  emailTemplates EmailTemplate[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model EmailTemplate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String   @db.VarChar(255)
+  subject     String   @db.VarChar(255)
+  content     String   @db.Text
+  category    String?  @db.VarChar(100)
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@index([userId])
+  @@index([category])
+  @@map("email_templates")
+}
+
+model Campaign {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  templateId     String?   @map("template_id") @db.Uuid
+  name           String    @db.VarChar(255)
+  subject        String    @db.VarChar(255)
+  content        String    @db.Text
+  status         String    @default("draft") @db.VarChar(20)
+  scheduledAt    DateTime? @map("scheduled_at") @db.Timestamptz(6)
+  sentAt         DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template           EmailTemplate?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  campaignRecipients CampaignRecipient[]
+  emailTracking      EmailTracking[]
+
+  @@index([userId])
+  @@index([templateId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("campaigns")
+}
+
+model EmailList {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  name           String   @db.VarChar(255)
+  description    String?  @db.Text
+  recipientCount Int      @default(0) @map("recipient_count")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listRecipients ListRecipient[]
+
+  @@index([userId])
+  @@map("email_lists")
+}
+
+model Recipient {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email          String    @unique @db.VarChar(255)
+  firstName      String?   @map("first_name") @db.VarChar(100)
+  lastName       String?   @map("last_name") @db.VarChar(100)
+  status         String    @default("active") @db.VarChar(20)
+  unsubscribedAt DateTime? @map("unsubscribed_at") @db.Timestamptz(6)
+  metadata       Json?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  listRecipients     ListRecipient[]
+  campaignRecipients CampaignRecipient[]
+  emailTracking      EmailTracking[]
+
+  @@index([email])
+  @@map("recipients")
+}
+
+model ListRecipient {
+  listId      String   @map("list_id") @db.Uuid
+  recipientId String   @map("recipient_id") @db.Uuid
+  addedAt     DateTime @default(now()) @map("added_at") @db.Timestamptz(6)
+
+  emailList EmailList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  recipient Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@id([listId, recipientId])
+  @@map("list_recipients")
+}
+
+model CampaignRecipient {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaignId  String    @map("campaign_id") @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
+  status      String    @default("pending") @db.VarChar(20)
+  sentAt      DateTime? @map("sent_at") @db.Timestamptz(6)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+  bouncedAt   DateTime? @map("bounced_at") @db.Timestamptz(6)
+
+  campaign  Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recipient Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, recipientId])
+  @@index([campaignId])
+  @@index([status])
+  @@map("campaign_recipients")
+}
+
+model EmailTracking {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaignId  String   @map("campaign_id") @db.Uuid
+  recipientId String   @map("recipient_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(20)
+  eventData   Json?    @map("event_data")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  campaign  Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recipient Recipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([eventType])
+  @@index([createdAt(sort: Desc)])
+  @@map("email_tracking")
+}
