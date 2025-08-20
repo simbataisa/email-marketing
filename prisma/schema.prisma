@@ -20,9 +20,11 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  campaigns     Campaign[]
-  emailLists    EmailList[]
-  emailTemplates EmailTemplate[]
+  campaigns       Campaign[]
+  emailLists      EmailList[]
+  emailTemplates  EmailTemplate[]
+  globalVariables GlobalVariable[]
+  variableValues  VariableValue[]
 
   @@index([email])
   @@map("users")
@@ -39,8 +41,10 @@ model EmailTemplate {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaigns Campaign[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns         Campaign[]
+  templateVariables TemplateVariable[]
+  variableValues    VariableValue[]
 
   @@index([userId])
   @@index([category])
@@ -152,4 +156,67 @@ model EmailTracking {
   @@index([eventType])
   @@index([createdAt(sort: Desc)])
   @@map("email_tracking")
+}
+
+model GlobalVariable {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String   @db.VarChar(100)
+  displayName  String   @map("display_name") @db.VarChar(255)
+  description  String?  @db.Text
+  defaultValue String?  @map("default_value") @db.Text
+  variableType String   @default("text") @map("variable_type") @db.VarChar(20)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variableValues VariableValue[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([isActive])
+  @@map("global_variables")
+}
+
+model TemplateVariable {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId   String   @map("template_id") @db.Uuid
+  name         String   @db.VarChar(100)
+  displayName  String   @map("display_name") @db.VarChar(255)
+  description  String?  @db.Text
+  defaultValue String?  @map("default_value") @db.Text
+  variableType String   @default("text") @map("variable_type") @db.VarChar(20)
+  isRequired   Boolean  @default(false) @map("is_required")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  template       EmailTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  variableValues VariableValue[]
+
+  @@unique([templateId, name])
+  @@index([templateId])
+  @@map("template_variables")
+}
+
+model VariableValue {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  templateId         String?  @map("template_id") @db.Uuid
+  globalVariableId   String?  @map("global_variable_id") @db.Uuid
+  templateVariableId String?  @map("template_variable_id") @db.Uuid
+  value              String   @db.Text
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template         EmailTemplate?    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  globalVariable   GlobalVariable?   @relation(fields: [globalVariableId], references: [id], onDelete: Cascade)
+  templateVariable TemplateVariable? @relation(fields: [templateVariableId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, templateId, globalVariableId])
+  @@unique([userId, templateId, templateVariableId])
+  @@index([userId])
+  @@index([templateId])
+  @@map("variable_values")
 }

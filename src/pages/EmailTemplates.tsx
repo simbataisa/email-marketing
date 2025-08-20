@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import {
   Container,
   Typography,
@@ -21,8 +23,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Alert,
   CircularProgress,
+  Snackbar,
   Chip,
   Tooltip,
   FormControl,
@@ -31,6 +33,7 @@ import {
   Switch,
   FormControlLabel
 } from '@mui/material';
+import { Alert } from '@mui/material';
 import { GridLegacy as Grid } from '@mui/material';
 import {
   Add as AddIcon,
@@ -43,6 +46,8 @@ import {
   Category as CategoryIcon
 } from '@mui/icons-material';
 import axios from 'axios';
+import { variableService, type TemplateVariable, type GlobalVariable, type VariableValue } from '../services/variableService';
+import { useAuthStore } from '../store/authStore';
 
 interface EmailTemplate {
   id: string;
@@ -64,6 +69,7 @@ interface CreateTemplateData {
 }
 
 const EmailTemplates: React.FC = () => {
+  const { token } = useAuthStore();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,19 +87,82 @@ const EmailTemplates: React.FC = () => {
     category: '',
     isDefault: false
   });
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info' | 'warning';
+  }>({ open: false, message: '', severity: 'success' });
+  
+  const [previewVariables, setPreviewVariables] = useState<Record<string, string>>({});
+  const [templateVariables, setTemplateVariables] = useState<TemplateVariable[]>([]);
+  const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
+  const [variableValues, setVariableValues] = useState<VariableValue[]>([]);
+
+  // Extract variables from template content
+  const extractVariables = (content: string, subject: string = '') => {
+    const combinedText = `${content} ${subject}`;
+    const variableRegex = /{{(\w+)}}/g;
+    const variables = new Set<string>();
+    let match;
+    
+    while ((match = variableRegex.exec(combinedText)) !== null) {
+      variables.add(match[1]);
+    }
+    
+    return Array.from(variables);
+  };
+
+  // Get default values for common variables
+  const getDefaultValue = (variable: string) => {
+    const defaults: Record<string, string> = {
+      firstName: 'John',
+      lastName: 'Doe',
+      email: 'john.doe@example.com',
+      fromName: 'Your Company',
+      subject: '',
+      unsubscribeUrl: '#unsubscribe',
+      companyName: 'Your Company',
+      phone: '+1 (555) 123-4567',
+      address: '123 Main St, City, State 12345'
+    };
+    return defaults[variable] || `[${variable}]`;
+  };
 
   useEffect(() => {
+    console.log('EmailTemplates: token exists:', !!token);
+    console.log('EmailTemplates: token value:', token ? 'present' : 'missing');
     fetchTemplates();
     fetchCategories();
-  }, []);
+    fetchGlobalVariables();
+    fetchVariableValues();
+  }, [token]);
+
+  const fetchGlobalVariables = async () => {
+    try {
+      const variables = await variableService.global.getAll();
+      setGlobalVariables(variables);
+    } catch (err: any) {
+      console.error('Failed to fetch global variables:', err);
+    }
+  };
+
+  const fetchVariableValues = async () => {
+    try {
+      console.log('Fetching variable values with token:', !!token);
+      const values = await variableService.values.getAll();
+      console.log('Variable values response:', values);
+      setVariableValues(values);
+    } catch (err: any) {
+      console.error('Failed to fetch variable values:', err);
+      console.error('Error details:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+    }
+  };
 
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await axios.get('/api/email-templates', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await axios.get('/api/email-templates');
       setTemplates(response.data);
       setError(null);
     } catch (err: any) {
@@ -105,10 +174,7 @@ const EmailTemplates: React.FC = () => {
 
   const fetchCategories = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('/api/email-templates/categories', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await axios.get('/api/email-templates/meta/categories');
       setCategories(response.data);
     } catch (err) {
       console.error('Failed to fetch categories:', err);
@@ -125,17 +191,36 @@ const EmailTemplates: React.FC = () => {
     setSelectedTemplate(null);
   };
 
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
   const handleCreateTemplate = async () => {
     try {
-      const token = localStorage.getItem('token');
-      await axios.post('/api/email-templates', createData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await axios.post('/api/email-templates', createData);
+      
+      const newTemplate = response.data;
+      
+      // Extract and create template variables
+      try {
+        await variableService.template.extractFromTemplate(newTemplate.id);
+      } catch (extractErr: any) {
+        console.error('Failed to extract template variables:', extractErr);
+        // Don't fail the template creation if variable extraction fails
+      }
+      
       setCreateDialogOpen(false);
       setCreateData({ name: '', subject: '', content: '', category: '', isDefault: false });
+      showSnackbar(`Template "${createData.name}" created successfully!`, 'success');
       fetchTemplates();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create template');
+      const errorMessage = err.response?.data?.error || 'Failed to create template';
+      setError(errorMessage);
+      showSnackbar(errorMessage, 'error');
     }
   };
 
@@ -143,16 +228,25 @@ const EmailTemplates: React.FC = () => {
     if (!selectedTemplate) return;
     
     try {
-      const token = localStorage.getItem('token');
-      await axios.put(`/api/email-templates/${selectedTemplate.id}`, createData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.put(`/api/email-templates/${selectedTemplate.id}`, createData);
+      
+      // Extract and create template variables for updated content
+      try {
+        await variableService.template.extractFromTemplate(selectedTemplate.id);
+      } catch (extractErr: any) {
+        console.error('Failed to extract template variables:', extractErr);
+        // Don't fail the template update if variable extraction fails
+      }
+      
       setEditDialogOpen(false);
       setCreateData({ name: '', subject: '', content: '', category: '', isDefault: false });
+      showSnackbar(`Template "${createData.name}" updated successfully!`, 'success');
       fetchTemplates();
       handleMenuClose();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to update template');
+      const errorMessage = err.response?.data?.error || 'Failed to update template';
+      setError(errorMessage);
+      showSnackbar(errorMessage, 'error');
     }
   };
 
@@ -160,15 +254,15 @@ const EmailTemplates: React.FC = () => {
     if (!selectedTemplate) return;
     
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`/api/email-templates/${selectedTemplate.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.delete(`/api/email-templates/${selectedTemplate.id}`);
       setDeleteDialogOpen(false);
+      showSnackbar(`Template "${selectedTemplate.name}" deleted successfully!`, 'success');
       fetchTemplates();
       handleMenuClose();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to delete template');
+      const errorMessage = err.response?.data?.error || 'Failed to delete template';
+      setError(errorMessage);
+      showSnackbar(errorMessage, 'error');
     }
   };
 
@@ -176,7 +270,6 @@ const EmailTemplates: React.FC = () => {
     if (!selectedTemplate) return;
     
     try {
-      const token = localStorage.getItem('token');
       const duplicateData = {
         name: `${selectedTemplate.name} (Copy)`,
         subject: selectedTemplate.subject,
@@ -184,13 +277,14 @@ const EmailTemplates: React.FC = () => {
         category: selectedTemplate.category,
         isDefault: false
       };
-      await axios.post('/api/email-templates', duplicateData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.post('/api/email-templates', duplicateData);
+      showSnackbar(`Template "${selectedTemplate.name}" duplicated successfully!`, 'success');
       fetchTemplates();
       handleMenuClose();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to duplicate template');
+      const errorMessage = err.response?.data?.error || 'Failed to duplicate template';
+      setError(errorMessage);
+      showSnackbar(errorMessage, 'error');
     }
   };
 
@@ -203,12 +297,70 @@ const EmailTemplates: React.FC = () => {
         category: selectedTemplate.category,
         isDefault: selectedTemplate.isDefault
       });
+      showSnackbar(`Opening editor for "${selectedTemplate.name}"`, 'info');
       setEditDialogOpen(true);
     }
     handleMenuClose();
   };
 
-  const openPreviewDialog = () => {
+  const openPreviewDialog = async () => {
+    if (selectedTemplate) {
+      try {
+        console.log('Opening preview dialog for template:', selectedTemplate.id);
+        // Fetch template-specific variables
+        const templateVars = await variableService.template.getByTemplate(selectedTemplate.id);
+        console.log('Template variables fetched:', templateVars);
+        setTemplateVariables(templateVars);
+        
+        // Extract variables from template content as fallback
+        const extractedVariables = extractVariables(selectedTemplate.content, selectedTemplate.subject);
+        console.log('Extracted variables:', extractedVariables);
+        console.log('Global variables:', globalVariables);
+        console.log('Variable values:', variableValues);
+        const initialVariables: Record<string, string> = {};
+        
+        // First, use template variables if they exist
+        templateVars.forEach(templateVar => {
+          const userValue = variableValues.find(v => v.templateVariableId === templateVar.id);
+          initialVariables[templateVar.name] = userValue?.value || templateVar.defaultValue || getDefaultValue(templateVar.name);
+        });
+        
+        // Then, add any extracted variables that don't have template variables
+        extractedVariables.forEach(variable => {
+          if (!templateVars.some(tv => tv.name === variable)) {
+            // Check if there's a global variable for this
+            const globalVar = globalVariables.find(gv => gv.name === variable);
+            if (globalVar) {
+              const userValue = variableValues.find(v => v.globalVariableId === globalVar.id);
+              initialVariables[variable] = userValue?.value || globalVar.defaultValue || getDefaultValue(variable);
+            } else {
+              initialVariables[variable] = getDefaultValue(variable);
+            }
+          }
+        });
+        
+        // Override subject with actual template subject if it exists as a variable
+        if (extractedVariables.includes('subject')) {
+          initialVariables.subject = selectedTemplate.subject || '';
+        }
+        
+        console.log('Final preview variables:', initialVariables);
+        setPreviewVariables(initialVariables);
+        showSnackbar(`Previewing template "${selectedTemplate.name}"`, 'info');
+      } catch (err: any) {
+        console.error('Failed to fetch template variables:', err);
+        // Fallback to basic extraction
+        const variables = extractVariables(selectedTemplate.content, selectedTemplate.subject);
+        const initialVariables: Record<string, string> = {};
+        
+        variables.forEach(variable => {
+          initialVariables[variable] = getDefaultValue(variable);
+        });
+        
+        setPreviewVariables(initialVariables);
+        showSnackbar(`Previewing template "${selectedTemplate.name}" (basic mode)`, 'info');
+      }
+    }
     setPreviewDialogOpen(true);
     handleMenuClose();
   };
@@ -219,14 +371,60 @@ const EmailTemplates: React.FC = () => {
   };
 
   const getPreviewContent = () => {
-    if (!selectedTemplate) return '';
-    return selectedTemplate.content
-      .replace(/{{firstName}}/g, 'John')
-      .replace(/{{lastName}}/g, 'Doe')
-      .replace(/{{email}}/g, 'john.doe@example.com')
-      .replace(/{{fromName}}/g, 'Your Company')
-      .replace(/{{subject}}/g, selectedTemplate.subject)
-      .replace(/{{unsubscribeUrl}}/g, '#unsubscribe');
+    if (!selectedTemplate || !selectedTemplate.content) return '';
+    
+    let content = selectedTemplate.content;
+    
+    // Replace all variables found in the template
+    Object.entries(previewVariables).forEach(([variable, value]) => {
+      const regex = new RegExp(`{{${variable}}}`, 'g');
+      content = content.replace(regex, value || `[${variable}]`);
+    });
+    
+    return content;
+  };
+
+  const handleVariableChange = async (variableName: string, value: string) => {
+    // Update local state immediately for responsive UI
+    setPreviewVariables(prev => ({ ...prev, [variableName]: value }));
+    
+    try {
+      // Find if this is a template variable or global variable
+      const templateVar = templateVariables.find(tv => tv.name === variableName);
+      const globalVar = globalVariables.find(gv => gv.name === variableName);
+      
+      if (templateVar) {
+        // Check if user already has a value for this template variable
+        const existingValue = variableValues.find(v => v.templateVariableId === templateVar.id);
+        
+        if (existingValue) {
+          // Update existing value
+          const updatedValue = await variableService.values.update(existingValue.id, { value });
+          setVariableValues(prev => prev.map(v => v.id === existingValue.id ? updatedValue : v));
+        } else {
+          // Create new value
+          const newValue = await variableService.values.create({ templateVariableId: templateVar.id, value });
+          setVariableValues(prev => [...prev, newValue]);
+        }
+      } else if (globalVar) {
+        // Check if user already has a value for this global variable
+        const existingValue = variableValues.find(v => v.globalVariableId === globalVar.id);
+        
+        if (existingValue) {
+          // Update existing value
+          const updatedValue = await variableService.values.update(existingValue.id, { value });
+          setVariableValues(prev => prev.map(v => v.id === existingValue.id ? updatedValue : v));
+        } else {
+          // Create new value
+          const newValue = await variableService.values.create({ globalVariableId: globalVar.id, value });
+          setVariableValues(prev => [...prev, newValue]);
+        }
+      }
+      // If it's neither template nor global variable, just keep it in local state
+    } catch (err: any) {
+      console.error('Failed to save variable value:', err);
+      // Keep the local state change even if save fails
+    }
   };
 
   if (loading) {
@@ -441,16 +639,30 @@ const EmailTemplates: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Email Content (HTML)"
-                  value={createData.content}
-                  onChange={(e) => setCreateData({ ...createData, content: e.target.value })}
-                  margin="normal"
-                  multiline
-                  rows={10}
-                  helperText="Use {{firstName}}, {{lastName}}, {{email}}, {{fromName}}, {{subject}}, {{unsubscribeUrl}} for personalization"
-                />
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Email Content (HTML)
+                  </Typography>
+                  <ReactQuill
+                    value={createData.content}
+                    onChange={(content) => setCreateData({ ...createData, content })}
+                    style={{ height: '300px', marginBottom: '50px' }}
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'align': [] }],
+                        ['link', 'image'],
+                        ['clean']
+                      ]
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Use {'{'}firstName{'}'}, {'{'}lastName{'}'}, {'{'}email{'}'}, {'{'}fromName{'}'}, {'{'}subject{'}'}, {'{'}unsubscribeUrl{'}'} for personalization
+                  </Typography>
+                </Box>
               </Grid>
               <Grid item xs={12}>
                 <FormControlLabel
@@ -516,16 +728,30 @@ const EmailTemplates: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Email Content (HTML)"
-                  value={createData.content}
-                  onChange={(e) => setCreateData({ ...createData, content: e.target.value })}
-                  margin="normal"
-                  multiline
-                  rows={10}
-                  helperText="Use {{firstName}}, {{lastName}}, {{email}}, {{fromName}}, {{subject}}, {{unsubscribeUrl}} for personalization"
-                />
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Email Content (HTML)
+                  </Typography>
+                  <ReactQuill
+                    value={createData.content}
+                    onChange={(content) => setCreateData({ ...createData, content })}
+                    style={{ height: '300px', marginBottom: '50px' }}
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'align': [] }],
+                        ['link', 'image'],
+                        ['clean']
+                      ]
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Use {'{'}firstName{'}'}, {'{'}lastName{'}'}, {'{'}email{'}'}, {'{'}fromName{'}'}, {'{'}subject{'}'}, {'{'}unsubscribeUrl{'}'} for personalization
+                  </Typography>
+                </Box>
               </Grid>
               <Grid item xs={12}>
                 <FormControlLabel
@@ -550,25 +776,83 @@ const EmailTemplates: React.FC = () => {
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>Template Preview</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1 }}>
-            <Typography variant="h6" gutterBottom>
-              Subject: {selectedTemplate?.subject}
-            </Typography>
-            <Box
-              sx={{
-                border: '1px solid #e0e0e0',
-                borderRadius: 1,
-                p: 2,
-                backgroundColor: '#f9f9f9',
-                maxHeight: '400px',
-                overflow: 'auto'
-              }}
-            >
-              <div dangerouslySetInnerHTML={{ __html: getPreviewContent() }} />
-            </Box>
+            <Grid container spacing={3}>
+              {/* Variables Input Section */}
+              <Grid item xs={12} md={4}>
+                <Typography variant="h6" gutterBottom>
+                  Preview Variables
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {selectedTemplate && extractVariables(selectedTemplate.content, selectedTemplate.subject).length > 0 ? (
+                    extractVariables(selectedTemplate.content, selectedTemplate.subject).map((variable) => {
+                      // Format variable name for display
+                      const formatLabel = (varName: string) => {
+                        return varName
+                          .replace(/([A-Z])/g, ' $1')
+                          .replace(/^./, str => str.toUpperCase())
+                          .trim();
+                      };
+                      
+                      return (
+                        <TextField
+                          key={variable}
+                          label={formatLabel(variable)}
+                          value={previewVariables[variable] || ''}
+                          onChange={(e) => handleVariableChange(variable, e.target.value)}
+                          size="small"
+                          fullWidth
+                          placeholder={`Enter ${formatLabel(variable).toLowerCase()}`}
+                        />
+                      );
+                    })
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      No variables found in this template
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              
+              {/* Preview Section */}
+              <Grid item xs={12} md={8}>
+                <Typography variant="h6" gutterBottom>
+                  Email Preview
+                </Typography>
+                <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+                   <Typography variant="subtitle2" color="text.secondary">
+                     Subject: {(() => {
+                       if (!selectedTemplate) return 'No subject';
+                       let subject = selectedTemplate.subject || '';
+                       Object.entries(previewVariables).forEach(([variable, value]) => {
+                         const regex = new RegExp(`{{${variable}}}`, 'g');
+                         subject = subject.replace(regex, value || `[${variable}]`);
+                       });
+                       return subject || 'No subject';
+                     })()}
+                   </Typography>
+                   <Typography variant="caption" color="text.secondary">
+                     From: {previewVariables.fromName || '[fromName]'}
+                   </Typography>
+                 </Box>
+                <Box
+                  sx={{
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 1,
+                    p: 2,
+                    backgroundColor: '#ffffff',
+                    maxHeight: '500px',
+                    overflow: 'auto',
+                    minHeight: '300px'
+                  }}
+                >
+                  <div dangerouslySetInnerHTML={{ __html: getPreviewContent() }} />
+                </Box>
+              </Grid>
+            </Grid>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -591,6 +875,23 @@ const EmailTemplates: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for user feedback */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

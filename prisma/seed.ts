@@ -155,6 +155,182 @@ async function main() {
 
   console.log('✅ Created email templates:', templates.length);
 
+  // Create global variables that can be reused across templates
+  const globalVariables = await Promise.all([
+    prisma.globalVariable.create({
+      data: {
+        name: 'company_name',
+        displayName: 'Company Name',
+        description: 'Company name used across all templates',
+        defaultValue: 'Your Company',
+        userId: adminUser.id
+      }
+    }),
+    prisma.globalVariable.create({
+      data: {
+        name: 'company_email',
+        displayName: 'Company Email',
+        description: 'Company contact email',
+        defaultValue: 'contact@yourcompany.com',
+        userId: adminUser.id
+      }
+    }),
+    prisma.globalVariable.create({
+      data: {
+        name: 'company_address',
+        displayName: 'Company Address',
+        description: 'Company physical address',
+        defaultValue: '123 Business St, City, State 12345',
+        userId: adminUser.id
+      }
+    })
+  ]);
+
+  console.log('✅ Created global variables:', globalVariables.length);
+
+  // Create template-specific variables for each template
+  const templateVariables = await Promise.all([
+    // Welcome Template variables
+    prisma.templateVariable.create({
+      data: {
+        name: 'first_name',
+        displayName: 'First Name',
+        description: 'Recipient first name',
+        defaultValue: 'Valued Customer',
+        templateId: templates[0].id
+      }
+    }),
+    // Newsletter Template variables
+    prisma.templateVariable.create({
+      data: {
+        name: 'first_name',
+        displayName: 'First Name',
+        description: 'Recipient first name',
+        defaultValue: 'Subscriber',
+        templateId: templates[1].id
+      }
+    }),
+    prisma.templateVariable.create({
+      data: {
+        name: 'month',
+        displayName: 'Month',
+        description: 'Current month for newsletter',
+        defaultValue: 'January',
+        templateId: templates[1].id
+      }
+    }),
+    prisma.templateVariable.create({
+      data: {
+        name: 'year',
+        displayName: 'Year',
+        description: 'Current year for newsletter',
+        defaultValue: '2024',
+        templateId: templates[1].id
+      }
+    }),
+    // Product Launch Template variables
+    prisma.templateVariable.create({
+      data: {
+        name: 'first_name',
+        displayName: 'First Name',
+        description: 'Recipient first name',
+        defaultValue: 'Customer',
+        templateId: templates[2].id
+      }
+    }),
+    prisma.templateVariable.create({
+      data: {
+        name: 'product_name',
+        displayName: 'Product Name',
+        description: 'Name of the product being launched',
+        defaultValue: 'Amazing Product',
+        templateId: templates[2].id
+      }
+    }),
+    prisma.templateVariable.create({
+      data: {
+        name: 'product_description',
+        displayName: 'Product Description',
+        description: 'Description of the product',
+        defaultValue: 'This amazing product will revolutionize your workflow.',
+        templateId: templates[2].id
+      }
+    }),
+    prisma.templateVariable.create({
+      data: {
+        name: 'product_url',
+        displayName: 'Product URL',
+        description: 'URL to the product page',
+        defaultValue: 'https://yourcompany.com/products/amazing-product',
+        templateId: templates[2].id
+      }
+    })
+  ]);
+
+  console.log('✅ Created template variables:', templateVariables.length);
+
+  // Create some sample variable values for demonstration
+  const variableValues = await Promise.all([
+    // Set company name value
+    prisma.variableValue.create({
+      data: {
+        value: 'Acme Corporation',
+        globalVariableId: globalVariables[0].id,
+        userId: adminUser.id
+      }
+    }),
+    // Set company email value
+    prisma.variableValue.create({
+      data: {
+        value: 'hello@acmecorp.com',
+        globalVariableId: globalVariables[1].id,
+        userId: adminUser.id
+      }
+    }),
+    // Set current month for newsletter
+    prisma.variableValue.create({
+      data: {
+        value: 'December',
+        templateVariableId: templateVariables[2].id,
+        userId: adminUser.id
+      }
+    }),
+    // Set current year for newsletter
+    prisma.variableValue.create({
+      data: {
+        value: '2024',
+        templateVariableId: templateVariables[3].id,
+        userId: adminUser.id
+      }
+    }),
+    // Set product name for launch template
+    prisma.variableValue.create({
+      data: {
+        value: 'SuperWidget Pro',
+        templateVariableId: templateVariables[5].id,
+        userId: adminUser.id
+      }
+    }),
+    // Set product description
+    prisma.variableValue.create({
+      data: {
+        value: 'The most advanced widget management system ever created, featuring AI-powered automation and real-time analytics.',
+        templateVariableId: templateVariables[6].id,
+        userId: adminUser.id
+      }
+    }),
+    // Set product URL
+    prisma.variableValue.create({
+      data: {
+        value: 'https://acmecorp.com/products/superwidget-pro',
+        templateVariableId: templateVariables[7].id,
+        userId: adminUser.id
+      }
+    })
+  ]);
+
+  console.log('✅ Created variable values:', variableValues.length);
+
   // Create sample campaigns using templates
   const campaign1 = await prisma.campaign.create({
     data: {
@@ -187,6 +363,9 @@ async function main() {
   console.log('- Email lists: 2');
   console.log('- Recipients: 5');
   console.log('- Email templates: 3');
+  console.log('- Global variables: 3');
+  console.log('- Template variables: 8');
+  console.log('- Variable values: 7');
   console.log('- Campaigns: 2');
   console.log('');
   console.log('🔗 Access Prisma Studio: npx prisma studio');

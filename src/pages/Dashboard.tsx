@@ -31,7 +31,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar
+  ListItemAvatar,
+  Snackbar
 } from '@mui/material';
 import { GridLegacy as Grid } from '@mui/material';
 import {
@@ -109,6 +110,11 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info' | 'warning';
+  }>({ open: false, message: '', severity: 'success' });
   
   const { user, token } = useAuthStore();
   const navigate = useNavigate();
@@ -242,12 +248,21 @@ export default function Dashboard() {
     setSelectedCampaign(null);
   };
 
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
   const handleCreateCampaign = () => {
     navigate('/campaigns/create');
   };
 
   const handleEditCampaign = () => {
     if (selectedCampaign) {
+      showSnackbar(`Opening editor for "${selectedCampaign.name}"`, 'info');
       navigate(`/campaigns/${selectedCampaign.id}/edit`);
     }
     handleMenuClose();
@@ -255,6 +270,7 @@ export default function Dashboard() {
 
   const handleViewCampaign = () => {
     if (selectedCampaign) {
+      showSnackbar(`Opening details for "${selectedCampaign.name}"`, 'info');
       navigate(`/campaigns/${selectedCampaign.id}`);
     }
     handleMenuClose();
@@ -273,10 +289,16 @@ export default function Dashboard() {
       });
       
       if (response.ok) {
+        const data = await response.json();
+        showSnackbar(`Campaign "${selectedCampaign.name}" duplicated successfully!`, 'success');
         fetchDashboardData(); // Refresh data
+      } else {
+        const errorData = await response.json();
+        showSnackbar(errorData.error || 'Failed to duplicate campaign', 'error');
       }
     } catch (err) {
       console.error('Failed to duplicate campaign:', err);
+      showSnackbar('Failed to duplicate campaign. Please try again.', 'error');
     }
     
     handleMenuClose();
@@ -296,10 +318,15 @@ export default function Dashboard() {
         });
         
         if (response.ok) {
+          showSnackbar(`Campaign "${selectedCampaign.name}" deleted successfully!`, 'success');
           fetchDashboardData(); // Refresh data
+        } else {
+          const errorData = await response.json();
+          showSnackbar(errorData.error || 'Failed to delete campaign', 'error');
         }
       } catch (err) {
         console.error('Failed to delete campaign:', err);
+        showSnackbar('Failed to delete campaign. Please try again.', 'error');
       }
     }
     
@@ -320,10 +347,16 @@ export default function Dashboard() {
         });
         
         if (response.ok) {
+          const data = await response.json();
+          showSnackbar(`Campaign "${selectedCampaign.name}" is being sent!`, 'info');
           fetchDashboardData(); // Refresh data
+        } else {
+          const errorData = await response.json();
+          showSnackbar(errorData.error || 'Failed to send campaign', 'error');
         }
       } catch (err) {
         console.error('Failed to send campaign:', err);
+        showSnackbar('Failed to send campaign. Please try again.', 'error');
       }
     }
     
@@ -750,6 +783,23 @@ export default function Dashboard() {
           Delete
         </MenuItem>
       </Menu>
+
+      {/* Snackbar for user feedback */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
     </>
   );

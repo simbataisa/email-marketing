@@ -13,6 +13,7 @@ import emailListRoutes from './routes/email-lists.js';
 import recipientRoutes from './routes/recipients.js';
 import analyticsRoutes from './routes/analytics.js';
 import emailTemplateRoutes from './routes/email-templates.js';
+import variableRoutes from './routes/variables.js';
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url);
@@ -37,6 +38,7 @@ app.use('/api/email-lists', emailListRoutes);
 app.use('/api/recipients', recipientRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/email-templates', emailTemplateRoutes);
+app.use('/api/variables', variableRoutes);
 
 /**
  * health
