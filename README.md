@@ -15,6 +15,11 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
 - ✅ Email templates feature with categorization and personalization
 - ✅ Responsive design improvements
 - ✅ Fixed campaign data loading issues
+- ✅ **NEW**: Comprehensive variable management system
+  - Global variables for reusable content across templates
+  - Template-specific variables for customization
+  - Variable values for personalized email content
+  - Dynamic content insertion and management
 
 ## 📋 Table of Contents
 
@@ -43,6 +48,11 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
   - Drag-and-drop template selection in campaign wizard
   - Personalization tags support ({{firstName}}, {{lastName}}, {{email}})
   - Template usage tracking and analytics
+- **Variable Management**: Comprehensive system for managing dynamic content
+  - Global variables: Reusable across all email templates
+  - Template-specific variables: Custom variables for individual templates
+  - Variable values: User-defined values for personalized content
+  - Dynamic content insertion in email templates and campaigns
 - **Email Lists Management**: Create, edit, and manage subscriber lists
 - **CSV Import/Export**: Bulk import/export of recipients
 - **Analytics & Tracking**: Campaign performance metrics and engagement tracking
@@ -294,6 +304,9 @@ The application uses the following main entities:
 - **Recipients**: Individual email subscribers with personalization data
 - **EmailTracking**: Analytics and engagement tracking
 - **CampaignRecipients**: Junction table for campaign-recipient relationships
+- **GlobalVariable**: Reusable variables across all email templates
+- **TemplateVariable**: Template-specific variables for customization
+- **VariableValue**: User-defined values for variables with personalized content
 
 ## 📡 API Endpoints
 
@@ -317,6 +330,22 @@ The application uses the following main entities:
 - `PUT /api/email-templates/:id` - Update email template
 - `DELETE /api/email-templates/:id` - Delete email template
 - `POST /api/email-templates/:id/test` - Send test email with template
+
+### Variables
+- `GET /api/variables/global` - List global variables
+- `POST /api/variables/global` - Create global variable
+- `PUT /api/variables/global/:id` - Update global variable
+- `DELETE /api/variables/global/:id` - Delete global variable
+- `GET /api/variables/template/:templateId` - List template-specific variables
+- `POST /api/variables/template/:templateId` - Create template variable
+- `PUT /api/variables/template/:id` - Update template variable
+- `DELETE /api/variables/template/:id` - Delete template variable
+- `GET /api/variables/values` - List all variable values for user
+- `GET /api/variables/values/:templateId` - List variable values for template
+- `POST /api/variables/values` - Create variable value
+- `PUT /api/variables/values/:id` - Update variable value
+- `DELETE /api/variables/values/:id` - Delete variable value
+- `POST /api/variables/extract/:templateId` - Extract variables from template content
 
 ### Email Lists
 - `GET /api/email-lists` - List email lists

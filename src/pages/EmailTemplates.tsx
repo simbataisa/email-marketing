@@ -31,19 +31,34 @@ import {
   InputLabel,
   Select,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Alert,
+  Tabs,
+  Tab,
+  Checkbox,
+  ListItemText,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
-import { Alert } from '@mui/material';
 import { GridLegacy as Grid } from '@mui/material';
 import {
   Add as AddIcon,
-  MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Email as EmailIcon,
+  Visibility as PreviewIcon,
+  FileCopy as DuplicateIcon,
+  MoreVert as MoreVertIcon,
+  Search as SearchIcon,
+  FilterList as FilterIcon,
+  GetApp as ExportIcon,
+  Category as CategoryIcon,
   Visibility as VisibilityIcon,
+  Email as EmailIcon,
   FileCopy as CopyIcon,
-  Category as CategoryIcon
+  ExpandMore as ExpandMoreIcon,
+  Settings as SettingsIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import { variableService, type TemplateVariable, type GlobalVariable, type VariableValue } from '../services/variableService';
@@ -97,6 +112,15 @@ const EmailTemplates: React.FC = () => {
   const [templateVariables, setTemplateVariables] = useState<TemplateVariable[]>([]);
   const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
   const [variableValues, setVariableValues] = useState<VariableValue[]>([]);
+  
+  // Edit mode variable states
+  const [editTemplateVariables, setEditTemplateVariables] = useState<TemplateVariable[]>([]);
+  const [editGlobalVariables, setEditGlobalVariables] = useState<GlobalVariable[]>([]);
+  const [selectedGlobalVariables, setSelectedGlobalVariables] = useState<string[]>([]);
+  const [newTemplateVariable, setNewTemplateVariable] = useState<Partial<TemplateVariable>>({});
+  const [editPreviewVariables, setEditPreviewVariables] = useState<Record<string, string>>({});
+  const [editVariableTab, setEditVariableTab] = useState(0);
+  const [showEditPreview, setShowEditPreview] = useState(false);
 
   // Extract variables from template content
   const extractVariables = (content: string, subject: string = '') => {
@@ -288,68 +312,95 @@ const EmailTemplates: React.FC = () => {
     }
   };
 
-  const openEditDialog = () => {
+  const openEditDialog = async () => {
     if (selectedTemplate) {
-      setCreateData({
-        name: selectedTemplate.name,
-        subject: selectedTemplate.subject,
-        content: selectedTemplate.content,
-        category: selectedTemplate.category,
-        isDefault: selectedTemplate.isDefault
-      });
-      showSnackbar(`Opening editor for "${selectedTemplate.name}"`, 'info');
-      setEditDialogOpen(true);
+      try {
+        // Load template data
+        setCreateData({
+          name: selectedTemplate.name,
+          subject: selectedTemplate.subject,
+          content: selectedTemplate.content,
+          category: selectedTemplate.category,
+          isDefault: selectedTemplate.isDefault
+        });
+        
+        // Load template-specific variables
+        const templateVars = await variableService.template.getByTemplate(selectedTemplate.id);
+        setEditTemplateVariables(templateVars);
+        
+        // Load all global variables
+        const globalVars = await variableService.global.getAll();
+        setEditGlobalVariables(globalVars);
+        
+        // Initialize selected global variables (those already used in template)
+        const extractedVars = extractVariables(selectedTemplate.content, selectedTemplate.subject);
+        const usedGlobalVars = globalVars
+          .filter(gv => extractedVars.includes(gv.name))
+          .map(gv => gv.id);
+        setSelectedGlobalVariables(usedGlobalVars);
+        
+        // Initialize edit preview variables
+        const initPreviewVars: Record<string, string> = {};
+        extractedVars.forEach(variable => {
+          const templateVar = templateVars.find(tv => tv.name === variable);
+          const globalVar = globalVars.find(gv => gv.name === variable);
+          const currentVar = templateVar || globalVar;
+          initPreviewVars[variable] = currentVar?.defaultValue || getDefaultValue(variable);
+        });
+        setEditPreviewVariables(initPreviewVars);
+        
+        // Reset states
+        setEditVariableTab(0);
+        setShowEditPreview(false);
+        setNewTemplateVariable({});
+        
+        showSnackbar(`Opening editor for "${selectedTemplate.name}"`, 'info');
+        setEditDialogOpen(true);
+      } catch (err: any) {
+        console.error('Failed to load variables for edit:', err);
+        showSnackbar('Failed to load template variables', 'error');
+      }
     }
     handleMenuClose();
   };
 
   const openPreviewDialog = async () => {
     if (selectedTemplate) {
-      try {
-        console.log('Opening preview dialog for template:', selectedTemplate.id);
-        // Fetch template-specific variables
+      try {    
+        // Load template-specific variables
         const templateVars = await variableService.template.getByTemplate(selectedTemplate.id);
-        console.log('Template variables fetched:', templateVars);
         setTemplateVariables(templateVars);
         
-        // Extract variables from template content as fallback
-        const extractedVariables = extractVariables(selectedTemplate.content, selectedTemplate.subject);
-        console.log('Extracted variables:', extractedVariables);
-        console.log('Global variables:', globalVariables);
-        console.log('Variable values:', variableValues);
-        const initialVariables: Record<string, string> = {};
+        // Load all global variables
+        const globalVars = await variableService.global.getAll();
+        console.log('Global variables loaded:', globalVars);
         
-        // First, use template variables if they exist
-        templateVars.forEach(templateVar => {
-          const userValue = variableValues.find(v => v.templateVariableId === templateVar.id);
-          initialVariables[templateVar.name] = userValue?.value || templateVar.defaultValue || getDefaultValue(templateVar.name);
+        // Extract variables from template content (same approach as edit dialog)
+        const extractedVars = extractVariables(selectedTemplate.content, selectedTemplate.subject);
+        
+        // Initialize preview variables (same logic as edit dialog)
+        const initPreviewVars: Record<string, string> = {};
+        extractedVars.forEach(variable => {
+          const templateVar = templateVars.find(tv => tv.name === variable);
+          const globalVar = globalVars.find(gv => gv.name === variable);
+          const currentVar = templateVar || globalVar;
+          initPreviewVars[variable] = currentVar?.defaultValue || getDefaultValue(variable);
         });
         
-        // Then, add any extracted variables that don't have template variables
-        extractedVariables.forEach(variable => {
-          if (!templateVars.some(tv => tv.name === variable)) {
-            // Check if there's a global variable for this
-            const globalVar = globalVariables.find(gv => gv.name === variable);
-            if (globalVar) {
-              const userValue = variableValues.find(v => v.globalVariableId === globalVar.id);
-              initialVariables[variable] = userValue?.value || globalVar.defaultValue || getDefaultValue(variable);
-            } else {
-              initialVariables[variable] = getDefaultValue(variable);
-            }
-          }
-        });
+        console.log('Final preview variables:', initPreviewVars);
+        setPreviewVariables(initPreviewVars);
         
-        // Override subject with actual template subject if it exists as a variable
-        if (extractedVariables.includes('subject')) {
-          initialVariables.subject = selectedTemplate.subject || '';
-        }
+        // Close menu first, then open dialog
+        setAnchorEl(null);
         
-        console.log('Final preview variables:', initialVariables);
-        setPreviewVariables(initialVariables);
-        showSnackbar(`Previewing template "${selectedTemplate.name}"`, 'info');
+        // Wait for state to update before opening dialog
+        setTimeout(() => {
+          setPreviewDialogOpen(true);
+          showSnackbar(`Previewing template "${selectedTemplate.name}"`, 'info');
+        }, 100);
       } catch (err: any) {
         console.error('Failed to fetch template variables:', err);
-        // Fallback to basic extraction
+        // Fallback to basic extraction (same as edit dialog fallback)
         const variables = extractVariables(selectedTemplate.content, selectedTemplate.subject);
         const initialVariables: Record<string, string> = {};
         
@@ -358,11 +409,20 @@ const EmailTemplates: React.FC = () => {
         });
         
         setPreviewVariables(initialVariables);
-        showSnackbar(`Previewing template "${selectedTemplate.name}" (basic mode)`, 'info');
+        
+        // Close menu first, then open dialog
+        setAnchorEl(null);
+        
+        // Wait for state to update before opening dialog
+        setTimeout(() => {
+          setPreviewDialogOpen(true);
+          showSnackbar(`Previewing template "${selectedTemplate.name}" (basic mode)`, 'info');
+        }, 100);
       }
+    } else {
+      setAnchorEl(null);
+      setPreviewDialogOpen(true);
     }
-    setPreviewDialogOpen(true);
-    handleMenuClose();
   };
 
   const openDeleteDialog = () => {
@@ -425,6 +485,161 @@ const EmailTemplates: React.FC = () => {
       console.error('Failed to save variable value:', err);
       // Keep the local state change even if save fails
     }
+  };
+
+  // Edit mode variable handlers
+  const handleEditVariableChange = (variable: string, value: string) => {
+    setEditPreviewVariables(prev => ({ ...prev, [variable]: value }));
+  };
+  
+  const handleAddGlobalVariable = async (globalVariableId: string) => {
+    if (!selectedTemplate) {
+      showSnackbar('No template selected', 'error');
+      return;
+    }
+    
+    if (!globalVariableId) {
+      showSnackbar('Invalid global variable ID', 'error');
+      return;
+    }
+    
+    if (selectedGlobalVariables.includes(globalVariableId)) {
+      showSnackbar('Global variable already selected', 'warning');
+      return;
+    }
+    
+    try {
+      const globalVar = editGlobalVariables.find(gv => gv.id === globalVariableId);
+      if (!globalVar) {
+        showSnackbar('Global variable not found', 'error');
+        return;
+      }
+      
+      // Add to selected global variables
+      setSelectedGlobalVariables(prev => [...prev, globalVariableId]);
+      
+      // Add to edit preview variables with default value
+      setEditPreviewVariables(prev => ({
+        ...prev,
+        [globalVar.name]: globalVar.defaultValue || getDefaultValue(globalVar.name)
+      }));
+      
+      showSnackbar(`Added global variable "${globalVar.displayName || globalVar.name}"`, 'success');
+    } catch (err: any) {
+      console.error('Failed to add global variable:', err);
+      showSnackbar('Failed to add global variable', 'error');
+    }
+  };
+  
+  const handleRemoveGlobalVariable = (globalVariableId: string) => {
+    const globalVar = editGlobalVariables.find(gv => gv.id === globalVariableId);
+    if (!globalVar) return;
+    
+    setSelectedGlobalVariables(prev => prev.filter(id => id !== globalVariableId));
+    setEditPreviewVariables(prev => {
+      const updated = { ...prev };
+      delete updated[globalVar.name];
+      return updated;
+    });
+    
+    showSnackbar(`Removed global variable "${globalVar.displayName || globalVar.name}"`, 'info');
+  };
+  
+  const handleCreateTemplateVariable = async () => {
+    if (!selectedTemplate) {
+      showSnackbar('No template selected', 'error');
+      return;
+    }
+    
+    if (!newTemplateVariable.name || newTemplateVariable.name.trim() === '') {
+      showSnackbar('Variable name is required', 'error');
+      return;
+    }
+    
+    // Validate variable name format
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(newTemplateVariable.name.trim())) {
+      showSnackbar('Variable name must start with a letter and contain only letters, numbers, and underscores', 'error');
+      return;
+    }
+    
+    // Check if variable name already exists
+    const existingVariable = editTemplateVariables.find(v => v.name === newTemplateVariable.name.trim());
+    if (existingVariable) {
+      showSnackbar('Variable name already exists', 'error');
+      return;
+    }
+    
+    if (!newTemplateVariable.displayName || newTemplateVariable.displayName.trim() === '') {
+      showSnackbar('Display name is required', 'error');
+      return;
+    }
+    
+    try {
+      const templateVar = await variableService.template.create({
+        templateId: selectedTemplate.id,
+        name: newTemplateVariable.name.trim(),
+        displayName: newTemplateVariable.displayName.trim(),
+        description: newTemplateVariable.description?.trim() || '',
+        type: newTemplateVariable.type || 'text',
+        defaultValue: newTemplateVariable.defaultValue?.trim() || ''
+      });
+      
+      // Update local state
+      setEditTemplateVariables(prev => [...prev, templateVar]);
+      setEditPreviewVariables(prev => ({
+        ...prev,
+        [templateVar.name]: templateVar.defaultValue || getDefaultValue(templateVar.name)
+      }));
+      
+      // Reset form
+      setNewTemplateVariable({});
+      
+      showSnackbar(`Created template variable "${templateVar.displayName}"`, 'success');
+    } catch (err: any) {
+      console.error('Failed to create template variable:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to create template variable';
+      showSnackbar(errorMessage, 'error');
+    }
+  };
+  
+  const handleDeleteTemplateVariable = async (templateVariableId: string) => {
+    if (!templateVariableId) {
+      showSnackbar('Invalid variable ID', 'error');
+      return;
+    }
+    
+    const deletedVar = editTemplateVariables.find(tv => tv.id === templateVariableId);
+    if (!deletedVar) {
+      showSnackbar('Variable not found', 'error');
+      return;
+    }
+    
+    try {
+      await variableService.template.delete(templateVariableId);
+      
+      setEditTemplateVariables(prev => prev.filter(tv => tv.id !== templateVariableId));
+      setEditPreviewVariables(prev => {
+        const updated = { ...prev };
+        delete updated[deletedVar.name];
+        return updated;
+      });
+      showSnackbar(`Deleted template variable "${deletedVar.displayName}"`, 'success');
+    } catch (err: any) {
+      console.error('Failed to delete template variable:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete template variable';
+      showSnackbar(errorMessage, 'error');
+    }
+  };
+  
+  const getEditPreviewContent = () => {
+    if (!selectedTemplate) return '';
+    
+    let content = createData.content;
+    Object.entries(editPreviewVariables).forEach(([variable, value]) => {
+      const regex = new RegExp(`{{${variable}}}`, 'g');
+      content = content.replace(regex, value || `[${variable}]`);
+    });
+    return content;
   };
 
   if (loading) {
@@ -687,176 +902,607 @@ const EmailTemplates: React.FC = () => {
       </Dialog>
 
       {/* Edit Template Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Edit Email Template</DialogTitle>
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="xl" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              Edit Template: {selectedTemplate?.name}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant={showEditPreview ? 'contained' : 'outlined'}
+                size="small"
+                onClick={() => setShowEditPreview(!showEditPreview)}
+                startIcon={<VisibilityIcon />}
+              >
+                {showEditPreview ? 'Hide Preview' : 'Show Preview'}
+              </Button>
+              <Chip 
+                label={selectedTemplate?.category || 'Uncategorized'} 
+                size="small" 
+                variant="outlined"
+              />
+            </Box>
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Template Name"
-                  value={createData.name}
-                  onChange={(e) => setCreateData({ ...createData, name: e.target.value })}
-                  margin="normal"
-                />
+            <Grid container spacing={3}>
+              {/* Template Content Section */}
+              <Grid item xs={12} md={showEditPreview ? 6 : 8}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <EditIcon color="primary" />
+                      Template Content
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Template Name"
+                          value={createData.name}
+                          onChange={(e) => setCreateData({ ...createData, name: e.target.value })}
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Category</InputLabel>
+                          <Select
+                            value={createData.category}
+                            onChange={(e) => setCreateData({ ...createData, category: e.target.value })}
+                            label="Category"
+                          >
+                            {categories.map((category) => (
+                              <MenuItem key={category} value={category}>
+                                {category}
+                              </MenuItem>
+                            ))}
+                            <MenuItem value="Other">Other</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Subject Line"
+                          value={createData.subject}
+                          onChange={(e) => {
+                            setCreateData({ ...createData, subject: e.target.value });
+                            // Update preview variables when subject changes
+                            const extractedVars = extractVariables(createData.content, e.target.value);
+                            const newPreviewVars: Record<string, string> = {};
+                            extractedVars.forEach(variable => {
+                              newPreviewVars[variable] = editPreviewVariables[variable] || getDefaultValue(variable);
+                            });
+                            setEditPreviewVariables(newPreviewVars);
+                          }}
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            Email Content (HTML)
+                          </Typography>
+                          <ReactQuill
+                            value={createData.content}
+                            onChange={(content) => {
+                              setCreateData({ ...createData, content });
+                              // Update preview variables when content changes
+                              const extractedVars = extractVariables(content, createData.subject);
+                              const newPreviewVars: Record<string, string> = {};
+                              extractedVars.forEach(variable => {
+                                newPreviewVars[variable] = editPreviewVariables[variable] || getDefaultValue(variable);
+                              });
+                              setEditPreviewVariables(newPreviewVars);
+                            }}
+                            style={{ height: '250px', marginBottom: '50px' }}
+                            modules={{
+                              toolbar: [
+                                [{ 'header': [1, 2, 3, false] }],
+                                ['bold', 'italic', 'underline', 'strike'],
+                                [{ 'color': [] }, { 'background': [] }],
+                                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                [{ 'align': [] }],
+                                ['link', 'image'],
+                                ['clean']
+                              ]
+                            }}
+                          />
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={createData.isDefault}
+                              onChange={(e) => setCreateData({ ...createData, isDefault: e.target.checked })}
+                            />
+                          }
+                          label="Set as default template"
+                        />
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth margin="normal">
-                  <InputLabel>Category</InputLabel>
-                  <Select
-                    value={createData.category}
-                    onChange={(e) => setCreateData({ ...createData, category: e.target.value })}
-                    label="Category"
-                  >
-                    {categories.map((category) => (
-                      <MenuItem key={category} value={category}>
-                        {category}
-                      </MenuItem>
-                    ))}
-                    <MenuItem value="Other">Other</MenuItem>
-                  </Select>
-                </FormControl>
+              
+              {/* Variables Management Section */}
+              <Grid item xs={12} md={showEditPreview ? 3 : 4}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <SettingsIcon color="primary" />
+                      Variables
+                    </Typography>
+                    
+                    <Tabs value={editVariableTab} onChange={(e, newValue) => setEditVariableTab(newValue)} sx={{ mb: 2 }}>
+                      <Tab label="Global" />
+                      <Tab label="Template" />
+                    </Tabs>
+                    
+                    {/* Global Variables Tab */}
+                    {editVariableTab === 0 && (
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Select global variables to use in this template:
+                        </Typography>
+                        
+                        <Box sx={{ maxHeight: '300px', overflow: 'auto' }}>
+                          {editGlobalVariables.map((globalVar) => (
+                            <Box key={globalVar.id} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="subtitle2">
+                                    {globalVar.displayName}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {'{'}{'{'}{globalVar.name}{'}'}{'}'}  • {globalVar.type}
+                                  </Typography>
+                                  {globalVar.description && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                      {globalVar.description}
+                                    </Typography>
+                                  )}
+                                </Box>
+                                <Checkbox
+                                  checked={selectedGlobalVariables.includes(globalVar.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      handleAddGlobalVariable(globalVar.id);
+                                    } else {
+                                      handleRemoveGlobalVariable(globalVar.id);
+                                    }
+                                  }}
+                                />
+                              </Box>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
+                    
+                    {/* Template Variables Tab */}
+                    {editVariableTab === 1 && (
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Template-specific variables:
+                        </Typography>
+                        
+                        {/* Create New Template Variable */}
+                        <Accordion sx={{ mb: 2 }}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Typography variant="subtitle2">Create New Variable</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12}>
+                                <TextField
+                                  fullWidth
+                                  label="Variable Name"
+                                  value={newTemplateVariable.name || ''}
+                                  onChange={(e) => setNewTemplateVariable(prev => ({ ...prev, name: e.target.value }))}
+                                  size="small"
+                                  placeholder="e.g., customerName"
+                                />
+                              </Grid>
+                              <Grid item xs={12}>
+                                <TextField
+                                  fullWidth
+                                  label="Display Name"
+                                  value={newTemplateVariable.displayName || ''}
+                                  onChange={(e) => setNewTemplateVariable(prev => ({ ...prev, displayName: e.target.value }))}
+                                  size="small"
+                                  placeholder="e.g., Customer Name"
+                                />
+                              </Grid>
+                              <Grid item xs={6}>
+                                <FormControl fullWidth size="small">
+                                  <InputLabel>Type</InputLabel>
+                                  <Select
+                                    value={newTemplateVariable.type || 'text'}
+                                    onChange={(e) => setNewTemplateVariable(prev => ({ ...prev, type: e.target.value }))}
+                                    label="Type"
+                                  >
+                                    <MenuItem value="text">Text</MenuItem>
+                                    <MenuItem value="number">Number</MenuItem>
+                                    <MenuItem value="email">Email</MenuItem>
+                                    <MenuItem value="url">URL</MenuItem>
+                                    <MenuItem value="date">Date</MenuItem>
+                                  </Select>
+                                </FormControl>
+                              </Grid>
+                              <Grid item xs={6}>
+                                <TextField
+                                  fullWidth
+                                  label="Default Value"
+                                  value={newTemplateVariable.defaultValue || ''}
+                                  onChange={(e) => setNewTemplateVariable(prev => ({ ...prev, defaultValue: e.target.value }))}
+                                  size="small"
+                                />
+                              </Grid>
+                              <Grid item xs={12}>
+                                <TextField
+                                  fullWidth
+                                  label="Description"
+                                  value={newTemplateVariable.description || ''}
+                                  onChange={(e) => setNewTemplateVariable(prev => ({ ...prev, description: e.target.value }))}
+                                  size="small"
+                                  multiline
+                                  rows={2}
+                                />
+                              </Grid>
+                              <Grid item xs={12}>
+                                <Button
+                                  variant="contained"
+                                  onClick={handleCreateTemplateVariable}
+                                  disabled={!newTemplateVariable.name}
+                                  size="small"
+                                  fullWidth
+                                >
+                                  Create Variable
+                                </Button>
+                              </Grid>
+                            </Grid>
+                          </AccordionDetails>
+                        </Accordion>
+                        
+                        {/* Existing Template Variables */}
+                        <Box sx={{ maxHeight: '250px', overflow: 'auto' }}>
+                          {editTemplateVariables.map((templateVar) => (
+                            <Box key={templateVar.id} sx={{ mb: 1, p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="subtitle2">
+                                    {templateVar.displayName}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {'{'}{'{'}{templateVar.name}{'}'}{'}'}  • {templateVar.type}
+                                  </Typography>
+                                  {templateVar.description && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                      {templateVar.description}
+                                    </Typography>
+                                  )}
+                                </Box>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleDeleteTemplateVariable(templateVar.id)}
+                                  color="error"
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
               </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Subject Line"
-                  value={createData.subject}
-                  onChange={(e) => setCreateData({ ...createData, subject: e.target.value })}
-                  margin="normal"
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Email Content (HTML)
-                  </Typography>
-                  <ReactQuill
-                    value={createData.content}
-                    onChange={(content) => setCreateData({ ...createData, content })}
-                    style={{ height: '300px', marginBottom: '50px' }}
-                    modules={{
-                      toolbar: [
-                        [{ 'header': [1, 2, 3, false] }],
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'color': [] }, { 'background': [] }],
-                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                        [{ 'align': [] }],
-                        ['link', 'image'],
-                        ['clean']
-                      ]
-                    }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    Use {'{'}firstName{'}'}, {'{'}lastName{'}'}, {'{'}email{'}'}, {'{'}fromName{'}'}, {'{'}subject{'}'}, {'{'}unsubscribeUrl{'}'} for personalization
-                  </Typography>
-                </Box>
-              </Grid>
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={createData.isDefault}
-                      onChange={(e) => setCreateData({ ...createData, isDefault: e.target.checked })}
-                    />
-                  }
-                  label="Set as default template"
-                />
-              </Grid>
+              
+              {/* Preview Section */}
+              {showEditPreview && (
+                <Grid item xs={12} md={3}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <VisibilityIcon color="primary" />
+                        Live Preview
+                      </Typography>
+                      
+                      {/* Variable Inputs */}
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Variable Values:</Typography>
+                        <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
+                          {extractVariables(createData.content, createData.subject).map((variable) => (
+                            <TextField
+                              key={variable}
+                              fullWidth
+                              label={variable}
+                              value={editPreviewVariables[variable] || ''}
+                              onChange={(e) => handleEditVariableChange(variable, e.target.value)}
+                              size="small"
+                              sx={{ mb: 1 }}
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                      
+                      <Divider sx={{ mb: 2 }} />
+                      
+                      {/* Email Preview */}
+                      <Box sx={{ mb: 2, p: 1, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                          SUBJECT
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {(() => {
+                            let subject = createData.subject || '';
+                            Object.entries(editPreviewVariables).forEach(([variable, value]) => {
+                              const regex = new RegExp(`{{${variable}}}`, 'g');
+                              subject = subject.replace(regex, value || `[${variable}]`);
+                            });
+                            return subject || 'No subject';
+                          })()}
+                        </Typography>
+                      </Box>
+                      
+                      <Box
+                        sx={{
+                          border: '1px solid #e0e0e0',
+                          borderRadius: 1,
+                          p: 1,
+                          backgroundColor: '#ffffff',
+                          maxHeight: '300px',
+                          overflow: 'auto',
+                          minHeight: '150px',
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        <div dangerouslySetInnerHTML={{ __html: getEditPreviewContent() }} />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
             </Grid>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleEditTemplate} variant="contained">
+          <Button onClick={() => setEditDialogOpen(false)} size="large">
+            Cancel
+          </Button>
+          <Button onClick={handleEditTemplate} variant="contained" size="large">
             Update Template
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>Template Preview</DialogTitle>
+      <Dialog open={previewDialogOpen} onClose={() => {
+        setPreviewDialogOpen(false);
+        setSelectedTemplate(null);
+      }} maxWidth="xl" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              Template Preview: {selectedTemplate?.name}
+            </Typography>
+            <Chip 
+              label={selectedTemplate?.category || 'Uncategorized'} 
+              size="small" 
+              variant="outlined"
+            />
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1 }}>
             <Grid container spacing={3}>
               {/* Variables Input Section */}
-              <Grid item xs={12} md={4}>
-                <Typography variant="h6" gutterBottom>
-                  Preview Variables
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {selectedTemplate && extractVariables(selectedTemplate.content, selectedTemplate.subject).length > 0 ? (
-                    extractVariables(selectedTemplate.content, selectedTemplate.subject).map((variable) => {
-                      // Format variable name for display
-                      const formatLabel = (varName: string) => {
-                        return varName
-                          .replace(/([A-Z])/g, ' $1')
-                          .replace(/^./, str => str.toUpperCase())
-                          .trim();
-                      };
-                      
-                      return (
-                        <TextField
-                          key={variable}
-                          label={formatLabel(variable)}
-                          value={previewVariables[variable] || ''}
-                          onChange={(e) => handleVariableChange(variable, e.target.value)}
-                          size="small"
-                          fullWidth
-                          placeholder={`Enter ${formatLabel(variable).toLowerCase()}`}
-                        />
-                      );
-                    })
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                      No variables found in this template
+              <Grid item xs={12} md={5}>
+                <Card variant="outlined" sx={{ height: 'fit-content' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CategoryIcon color="primary" />
+                      Variables
                     </Typography>
-                  )}
-                </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Customize variable values to see how they appear in your email template.
+                    </Typography>
+                    
+                    {(() => {
+                      const extractedVars = selectedTemplate ? extractVariables(selectedTemplate.content, selectedTemplate.subject) : [];
+                      console.log('Preview dialog - extracted vars:', extractedVars);
+                      console.log('Preview dialog - extracted vars length:', extractedVars.length);
+                      console.log('Preview dialog - selectedTemplate:', selectedTemplate);
+                      console.log('Preview dialog - previewVariables:', previewVariables);
+                      console.log('Preview dialog - Object.keys(previewVariables):', Object.keys(previewVariables));
+                      // Use extracted variables directly instead of relying on state
+                      return selectedTemplate && extractedVars.length > 0;
+                    })() ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {Object.keys(previewVariables).map((variable) => {
+                          // Find if this is a template variable or global variable
+                          const templateVar = templateVariables.find(tv => tv.name === variable);
+                          const globalVar = globalVariables.find(gv => gv.name === variable);
+                          const currentVar = templateVar || globalVar;
+                          
+                          // Format variable name for display
+                          const formatLabel = (varName: string) => {
+                            return varName
+                              .replace(/([A-Z])/g, ' $1')
+                              .replace(/^./, str => str.toUpperCase())
+                              .trim();
+                          };
+                          
+                          const displayName = currentVar?.displayName || formatLabel(variable);
+                          const description = currentVar?.description;
+                          const defaultValue = currentVar?.defaultValue || getDefaultValue(variable);
+                          const variableType = currentVar?.type || 'text';
+                          
+                          return (
+                            <Box key={variable} sx={{ mb: 2 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                  {displayName}
+                                </Typography>
+                                <Chip 
+                                  label={templateVar ? 'Template' : globalVar ? 'Global' : 'Custom'} 
+                                  size="small" 
+                                  color={templateVar ? 'primary' : globalVar ? 'secondary' : 'default'}
+                                  variant="outlined"
+                                />
+                                <Chip 
+                                  label={variableType} 
+                                  size="small" 
+                                  variant="outlined"
+                                />
+                              </Box>
+                              
+                              {description && (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                  {description}
+                                </Typography>
+                              )}
+                              
+                              <TextField
+                                label={`{{${variable}}}`}
+                                value={previewVariables[variable] || ''}
+                                onChange={(e) => handleVariableChange(variable, e.target.value)}
+                                size="small"
+                                fullWidth
+                                placeholder={defaultValue}
+                                type={variableType === 'number' ? 'number' : variableType === 'email' ? 'email' : variableType === 'url' ? 'url' : variableType === 'date' ? 'date' : 'text'}
+                                helperText={`Default: ${defaultValue}`}
+                                InputLabelProps={variableType === 'date' ? { shrink: true } : undefined}
+                              />
+                            </Box>
+                          );
+                        })}
+                        
+                        <Box sx={{ mt: 2, p: 2, backgroundColor: '#f8f9fa', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            <strong>Variable Types:</strong><br/>
+                            • <strong>Template:</strong> Specific to this template<br/>
+                            • <strong>Global:</strong> Reusable across all templates<br/>
+                            • <strong>Custom:</strong> Extracted from template content
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <Alert severity="info">
+                         <Typography variant="body2">
+                           No variables found in this template. Add variables like {'{{firstName}}'} or {'{{companyName}}'} to your template content to make it dynamic.
+                         </Typography>
+                       </Alert>
+                    )}
+                  </CardContent>
+                </Card>
               </Grid>
               
               {/* Preview Section */}
-              <Grid item xs={12} md={8}>
-                <Typography variant="h6" gutterBottom>
-                  Email Preview
-                </Typography>
-                <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
-                   <Typography variant="subtitle2" color="text.secondary">
-                     Subject: {(() => {
-                       if (!selectedTemplate) return 'No subject';
-                       let subject = selectedTemplate.subject || '';
-                       Object.entries(previewVariables).forEach(([variable, value]) => {
-                         const regex = new RegExp(`{{${variable}}}`, 'g');
-                         subject = subject.replace(regex, value || `[${variable}]`);
-                       });
-                       return subject || 'No subject';
-                     })()}
-                   </Typography>
-                   <Typography variant="caption" color="text.secondary">
-                     From: {previewVariables.fromName || '[fromName]'}
-                   </Typography>
-                 </Box>
-                <Box
-                  sx={{
-                    border: '1px solid #e0e0e0',
-                    borderRadius: 1,
-                    p: 2,
-                    backgroundColor: '#ffffff',
-                    maxHeight: '500px',
-                    overflow: 'auto',
-                    minHeight: '300px'
-                  }}
-                >
-                  <div dangerouslySetInnerHTML={{ __html: getPreviewContent() }} />
-                </Box>
+              <Grid item xs={12} md={7}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <VisibilityIcon color="primary" />
+                      Email Preview
+                    </Typography>
+                    
+                    {/* Email Header */}
+                    <Box sx={{ mb: 3, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            SUBJECT LINE
+                          </Typography>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                            {(() => {
+                              if (!selectedTemplate) return 'No subject';
+                              let subject = selectedTemplate.subject || '';
+                              Object.entries(previewVariables).forEach(([variable, value]) => {
+                                const regex = new RegExp(`{{${variable}}}`, 'g');
+                                subject = subject.replace(regex, value || `[${variable}]`);
+                              });
+                              return subject || 'No subject';
+                            })()}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            FROM
+                          </Typography>
+                          <Typography variant="body2">
+                            {previewVariables.fromName || '[fromName]'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            TO
+                          </Typography>
+                          <Typography variant="body2">
+                            {previewVariables.email || '[email]'}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                    
+                    {/* Email Content */}
+                    <Box
+                      sx={{
+                        border: '1px solid #e0e0e0',
+                        borderRadius: 1,
+                        p: 3,
+                        backgroundColor: '#ffffff',
+                        maxHeight: '600px',
+                        overflow: 'auto',
+                        minHeight: '400px',
+                        fontFamily: 'Arial, sans-serif',
+                        lineHeight: 1.6
+                      }}
+                    >
+                      <div dangerouslySetInnerHTML={{ __html: getPreviewContent() }} />
+                    </Box>
+                    
+                    {/* Preview Actions */}
+                    <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                      <Button 
+                        size="small" 
+                        variant="outlined"
+                        onClick={() => {
+                          // Reset to default values
+                          const resetVariables: Record<string, string> = {};
+                          extractVariables(selectedTemplate?.content || '', selectedTemplate?.subject || '').forEach(variable => {
+                            const templateVar = templateVariables.find(tv => tv.name === variable);
+                            const globalVar = globalVariables.find(gv => gv.name === variable);
+                            const currentVar = templateVar || globalVar;
+                            resetVariables[variable] = currentVar?.defaultValue || getDefaultValue(variable);
+                          });
+                          setPreviewVariables(resetVariables);
+                          showSnackbar('Variables reset to default values', 'info');
+                        }}
+                      >
+                        Reset to Defaults
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
               </Grid>
             </Grid>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>Close</Button>
+          <Button onClick={() => {
+            setPreviewDialogOpen(false);
+            setSelectedTemplate(null);
+          }} size="large">
+            Close Preview
+          </Button>
         </DialogActions>
       </Dialog>
 
