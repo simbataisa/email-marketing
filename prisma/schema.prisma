@@ -31,17 +31,21 @@ model User {
 }
 
 model EmailTemplate {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  name        String   @db.VarChar(255)
-  subject     String   @db.VarChar(255)
-  content     String   @db.Text
-  fromEmail   String?  @map("from_email") @db.VarChar(255)
-  toEmail     String?  @map("to_email") @db.VarChar(255)
-  category    String?  @db.VarChar(100)
-  isDefault   Boolean  @default(false) @map("is_default")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  name            String   @db.VarChar(255)
+  subject         String   @db.VarChar(255)
+  content         String   @db.Text
+  fromEmail       String?  @map("from_email") @db.VarChar(255)
+  toEmails        String[] @map("to_emails") @db.VarChar(255)
+  ccEmails        String[] @map("cc_emails") @db.VarChar(255)
+  bccEmails       String[] @map("bcc_emails") @db.VarChar(255)
+  maxRecipients   Int?     @default(50) @map("max_recipients")
+  attachments     Json?    @map("attachments")
+  category        String?  @db.VarChar(100)
+  isDefault       Boolean  @default(false) @map("is_default")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   campaigns         Campaign[]

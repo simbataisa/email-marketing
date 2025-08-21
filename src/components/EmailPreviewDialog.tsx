@@ -24,7 +24,17 @@ interface EmailTemplate {
   subject: string;
   content: string;
   fromEmail?: string;
-  toEmail?: string;
+  toEmails?: string[];
+  ccEmails?: string[];
+  bccEmails?: string[];
+  maxRecipients?: number;
+  attachments?: Array<{
+    name: string;
+    type: string;
+    size: number;
+    url?: string;
+    base64?: string;
+  }>;
   category: string;
   isDefault: boolean;
   createdAt: string;
@@ -312,13 +322,43 @@ export const EmailPreviewDialog: React.FC<EmailPreviewDialogProps> = ({
                           </Typography>
                         </Grid>
                       )}
-                      {template?.toEmail && (
+                      {template?.toEmails && template.toEmails.length > 0 && (
                         <Grid item xs={12}>
                           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                             TO
                           </Typography>
                           <Typography variant="body2">
-                            {template.toEmail}
+                            {template.toEmails.join(', ')}
+                          </Typography>
+                        </Grid>
+                      )}
+                      {template?.ccEmails && template.ccEmails.length > 0 && (
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            CC
+                          </Typography>
+                          <Typography variant="body2">
+                            {template.ccEmails.join(', ')}
+                          </Typography>
+                        </Grid>
+                      )}
+                      {template?.bccEmails && template.bccEmails.length > 0 && (
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            BCC
+                          </Typography>
+                          <Typography variant="body2">
+                            {template.bccEmails.join(', ')}
+                          </Typography>
+                        </Grid>
+                      )}
+                      {template?.attachments && template.attachments.length > 0 && (
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            ATTACHMENTS
+                          </Typography>
+                          <Typography variant="body2">
+                            {template.attachments.map(att => att.name).join(', ')}
                           </Typography>
                         </Grid>
                       )}

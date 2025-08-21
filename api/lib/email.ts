@@ -23,7 +23,9 @@ interface EmailTemplate {
 }
 
 interface SendEmailOptions {
-  to: string;
+  to: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
   subject: string;
   html: string;
   text?: string;
@@ -98,7 +100,9 @@ class EmailService {
     try {
       const mailOptions = {
         from: `"${process.env.FROM_NAME || 'Email Marketing'}" <${process.env.FROM_EMAIL || this.config.auth.user}>`,
-        to: options.to,
+        to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
+        cc: options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined,
+        bcc: options.bcc ? (Array.isArray(options.bcc) ? options.bcc.join(', ') : options.bcc) : undefined,
         subject: options.subject,
         html: this.addTrackingPixel(options.html, options.campaignId, options.recipientId),
         text: options.text
@@ -305,6 +309,75 @@ class EmailService {
       });
     } catch (error) {
       console.error('Failed to update campaign recipient status:', error);
+    }
+  }
+
+  /**
+   * Send email using template data
+   */
+  async sendEmailFromTemplate(templateData: {
+    toEmails?: string[];
+    ccEmails?: string[];
+    bccEmails?: string[];
+    fromEmail?: string;
+    subject: string;
+    content: string;
+    campaignId?: string;
+    recipientId?: string;
+  }): Promise<boolean> {
+    const mailOptions: any = {
+      from: templateData.fromEmail || `"${process.env.FROM_NAME || 'Email Marketing'}" <${process.env.FROM_EMAIL || this.config.auth.user}>`,
+      subject: templateData.subject,
+      html: this.addTrackingPixel(templateData.content, templateData.campaignId, templateData.recipientId)
+    };
+
+    // Add recipients
+    if (templateData.toEmails && templateData.toEmails.length > 0) {
+      mailOptions.to = templateData.toEmails.join(', ');
+    }
+
+    // Add CC recipients
+    if (templateData.ccEmails && templateData.ccEmails.length > 0) {
+      mailOptions.cc = templateData.ccEmails.join(', ');
+    }
+
+    // Add BCC recipients
+    if (templateData.bccEmails && templateData.bccEmails.length > 0) {
+      mailOptions.bcc = templateData.bccEmails.join(', ');
+    }
+
+    if (!this.transporter) {
+      console.error('Email transporter not initialized');
+      return false;
+    }
+
+    try {
+      const result = await this.transporter.sendMail(mailOptions);
+      console.log(`Email sent successfully:`, result.messageId);
+      
+      // Update campaign recipient status
+      if (templateData.campaignId && templateData.recipientId) {
+        await this.updateCampaignRecipientStatus(
+          templateData.campaignId,
+          templateData.recipientId,
+          'sent'
+        );
+      }
+      
+      return true;
+    } catch (error) {
+      console.error(`Failed to send email:`, error);
+      
+      // Update campaign recipient status to failed
+      if (templateData.campaignId && templateData.recipientId) {
+        await this.updateCampaignRecipientStatus(
+          templateData.campaignId,
+          templateData.recipientId,
+          'failed'
+        );
+      }
+      
+      return false;
     }
   }
 

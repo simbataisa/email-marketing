@@ -20,11 +20,15 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
   - Template-specific variables for customization
   - Variable values for personalized email content
   - Dynamic content insertion and management
-- ✅ **LATEST**: Enhanced email template functionality
+- ✅ **LATEST**: Enhanced email template functionality with advanced recipient management
+  - Support for multiple recipients (To, CC, BCC) with email validation
+  - Maximum recipients limit configuration for better email delivery control
+  - File attachments support for templates and campaigns
   - Reusable EmailPreviewDialog component for consistent preview experience
   - Backend API support for From and To email fields in templates
   - Improved code maintainability and component reusability
   - Real-time email preview with variable substitution
+  - Enhanced form validation for email addresses with error handling
 
 ## 📋 Table of Contents
 
@@ -48,11 +52,15 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
   - Audience Selection (email lists and recipients)
   - Content Creation (rich text editor with email templates)
   - Review & Schedule (preview and scheduling options)
-- **Email Templates**: Pre-designed templates with categorization and personalization
+- **Email Templates**: Pre-designed templates with categorization and advanced recipient management
   - Template library with categories (Newsletter, Promotional, Welcome, etc.)
   - Drag-and-drop template selection in campaign wizard
   - Personalization tags support ({{firstName}}, {{lastName}}, {{email}})
   - Template usage tracking and analytics
+  - **Multiple Recipients Support**: Configure To, CC, and BCC recipients for each template
+  - **Email Validation**: Real-time validation for email addresses with error feedback
+  - **Recipient Limits**: Set maximum number of recipients to control email delivery
+  - **File Attachments**: Support for adding attachments to email templates
   - From and To email field support for template-specific sender/recipient configuration
   - Enhanced preview dialog with real-time variable substitution and email formatting
   - Reusable preview component for consistent user experience across the application
@@ -318,7 +326,10 @@ npx prisma migrate dev --name migration_name
 The application uses the following main entities:
 - **Users**: Application users with authentication
 - **Campaigns**: Email campaigns with content, scheduling, and template support
-- **EmailTemplates**: Pre-designed email templates with categorization
+- **EmailTemplates**: Pre-designed email templates with categorization and advanced recipient management
+  - Support for multiple To, CC, and BCC recipients
+  - Maximum recipients limit configuration
+  - File attachments support
 - **EmailLists**: Subscriber lists for organizing recipients
 - **Recipients**: Individual email subscribers with personalization data
 - **EmailTracking**: Analytics and engagement tracking

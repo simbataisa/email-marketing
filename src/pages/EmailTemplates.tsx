@@ -71,7 +71,17 @@ interface EmailTemplate {
   subject: string;
   content: string;
   fromEmail?: string;
-  toEmail?: string;
+  toEmails?: string[];
+  ccEmails?: string[];
+  bccEmails?: string[];
+  maxRecipients?: number;
+  attachments?: Array<{
+    name: string;
+    type: string;
+    size: number;
+    url?: string;
+    base64?: string;
+  }>;
   category: string;
   isDefault: boolean;
   createdAt: string;
@@ -83,7 +93,17 @@ interface CreateTemplateData {
   subject: string;
   content: string;
   fromEmail: string;
-  toEmail: string;
+  toEmails: string[];
+  ccEmails: string[];
+  bccEmails: string[];
+  maxRecipients: number;
+  attachments: Array<{
+    name: string;
+    type: string;
+    size: number;
+    url?: string;
+    base64?: string;
+  }>;
   category: string;
   isDefault: boolean;
 }
@@ -94,6 +114,12 @@ const EmailTemplates: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emailErrors, setEmailErrors] = useState<{
+    fromEmail?: string;
+    toEmails?: string;
+    ccEmails?: string;
+    bccEmails?: string;
+  }>({});
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -105,7 +131,11 @@ const EmailTemplates: React.FC = () => {
     subject: '',
     content: '',
     fromEmail: '',
-    toEmail: '',
+    toEmails: [],
+    ccEmails: [],
+    bccEmails: [],
+    maxRecipients: 50,
+    attachments: [],
     category: '',
     isDefault: false
   });
@@ -114,6 +144,38 @@ const EmailTemplates: React.FC = () => {
     message: string;
     severity: 'success' | 'error' | 'info' | 'warning';
   }>({ open: false, message: '', severity: 'success' });
+
+  // Email validation functions
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateEmailList = (emails: string[]): string | undefined => {
+    if (emails.length === 0) return undefined;
+    const invalidEmails = emails.filter(email => email && !validateEmail(email));
+    if (invalidEmails.length > 0) {
+      return `Invalid email(s): ${invalidEmails.join(', ')}`;
+    }
+    return undefined;
+  };
+
+  const handleEmailFieldChange = (field: 'toEmails' | 'ccEmails' | 'bccEmails', value: string) => {
+    const emails = value.split(',').map(email => email.trim()).filter(email => email);
+    setCreateData({ ...createData, [field]: emails });
+    
+    // Validate emails
+    const error = validateEmailList(emails);
+    setEmailErrors(prev => ({ ...prev, [field]: error }));
+  };
+
+  const handleFromEmailChange = (value: string) => {
+    setCreateData({ ...createData, fromEmail: value });
+    
+    // Validate from email
+    const error = value && !validateEmail(value) ? 'Invalid email address' : undefined;
+    setEmailErrors(prev => ({ ...prev, fromEmail: error }));
+  };
   
   const [variableValues, setVariableValues] = useState<VariableValue[]>([]);
   
@@ -242,7 +304,7 @@ const EmailTemplates: React.FC = () => {
       }
       
       setCreateDialogOpen(false);
-      setCreateData({ name: '', subject: '', content: '', fromEmail: '', toEmail: '', category: '', isDefault: false });
+      setCreateData({ name: '', subject: '', content: '', fromEmail: '', toEmails: [], ccEmails: [], bccEmails: [], maxRecipients: 50, attachments: [], category: '', isDefault: false });
       showSnackbar(`Template "${createData.name}" created successfully!`, 'success');
       fetchTemplates();
     } catch (err: any) {
@@ -267,7 +329,7 @@ const EmailTemplates: React.FC = () => {
       }
       
       setEditDialogOpen(false);
-      setCreateData({ name: '', subject: '', content: '', fromEmail: '', toEmail: '', category: '', isDefault: false });
+      setCreateData({ name: '', subject: '', content: '', fromEmail: '', toEmails: [], ccEmails: [], bccEmails: [], maxRecipients: 50, attachments: [], category: '', isDefault: false });
       showSnackbar(`Template "${createData.name}" updated successfully!`, 'success');
       fetchTemplates();
       handleMenuClose();
@@ -325,7 +387,11 @@ const EmailTemplates: React.FC = () => {
           subject: selectedTemplate.subject,
           content: selectedTemplate.content,
           fromEmail: selectedTemplate.fromEmail || '',
-          toEmail: selectedTemplate.toEmail || '',
+          toEmails: selectedTemplate.toEmails || [],
+          ccEmails: selectedTemplate.ccEmails || [],
+          bccEmails: selectedTemplate.bccEmails || [],
+          maxRecipients: selectedTemplate.maxRecipients || 50,
+          attachments: selectedTemplate.attachments || [],
           category: selectedTemplate.category,
           isDefault: selectedTemplate.isDefault
         });
@@ -754,21 +820,59 @@ const EmailTemplates: React.FC = () => {
                   label="From Email"
                   type="email"
                   value={createData.fromEmail}
-                  onChange={(e) => setCreateData({ ...createData, fromEmail: e.target.value })}
+                  onChange={(e) => handleFromEmailChange(e.target.value)}
                   margin="normal"
                   placeholder="sender@example.com"
+                  error={!!emailErrors.fromEmail}
+                  helperText={emailErrors.fromEmail || "Sender's email address"}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="To Email (Default)"
-                  type="email"
-                  value={createData.toEmail}
-                  onChange={(e) => setCreateData({ ...createData, toEmail: e.target.value })}
+                  label="To Emails (Default)"
+                  value={createData.toEmails.join(', ')}
+                  onChange={(e) => handleEmailFieldChange('toEmails', e.target.value)}
                   margin="normal"
-                  placeholder="recipient@example.com"
-                  helperText="Default recipient email (can be overridden when sending)"
+                  placeholder="recipient1@example.com, recipient2@example.com"
+                  error={!!emailErrors.toEmails}
+                  helperText={emailErrors.toEmails || "Comma-separated list of default recipient emails (can be overridden when sending)"}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="CC Emails"
+                  value={createData.ccEmails.join(', ')}
+                  onChange={(e) => handleEmailFieldChange('ccEmails', e.target.value)}
+                  margin="normal"
+                  placeholder="cc1@example.com, cc2@example.com"
+                  error={!!emailErrors.ccEmails}
+                  helperText={emailErrors.ccEmails || "Comma-separated list of CC emails"}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="BCC Emails"
+                  value={createData.bccEmails.join(', ')}
+                  onChange={(e) => handleEmailFieldChange('bccEmails', e.target.value)}
+                  margin="normal"
+                  placeholder="bcc1@example.com, bcc2@example.com"
+                  error={!!emailErrors.bccEmails}
+                  helperText={emailErrors.bccEmails || "Comma-separated list of BCC emails"}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Max Recipients"
+                  type="number"
+                  value={createData.maxRecipients}
+                  onChange={(e) => setCreateData({ ...createData, maxRecipients: parseInt(e.target.value) || 50 })}
+                  margin="normal"
+                  inputProps={{ min: 1, max: 1000 }}
+                  helperText="Maximum number of recipients allowed (1-1000)"
                 />
               </Grid>
               <Grid item xs={12}>
@@ -906,21 +1010,59 @@ const EmailTemplates: React.FC = () => {
                           label="From Email"
                           type="email"
                           value={createData.fromEmail}
-                          onChange={(e) => setCreateData({ ...createData, fromEmail: e.target.value })}
+                          onChange={(e) => handleFromEmailChange(e.target.value)}
                           size="small"
                           placeholder="sender@example.com"
+                          error={!!emailErrors.fromEmail}
+                          helperText={emailErrors.fromEmail || "Sender's email address"}
                         />
                       </Grid>
                       <Grid item xs={12} sm={6}>
                         <TextField
                           fullWidth
-                          label="To Email (Default)"
-                          type="email"
-                          value={createData.toEmail}
-                          onChange={(e) => setCreateData({ ...createData, toEmail: e.target.value })}
+                          label="To Emails (Default)"
+                          value={createData.toEmails.join(', ')}
+                          onChange={(e) => handleEmailFieldChange('toEmails', e.target.value)}
                           size="small"
-                          placeholder="recipient@example.com"
-                          helperText="Default recipient email (can be overridden when sending)"
+                          placeholder="recipient1@example.com, recipient2@example.com"
+                          error={!!emailErrors.toEmails}
+                          helperText={emailErrors.toEmails || "Comma-separated list of default recipient emails (can be overridden when sending)"}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="CC Emails"
+                          value={createData.ccEmails.join(', ')}
+                          onChange={(e) => handleEmailFieldChange('ccEmails', e.target.value)}
+                          size="small"
+                          placeholder="cc1@example.com, cc2@example.com"
+                          error={!!emailErrors.ccEmails}
+                          helperText={emailErrors.ccEmails || "Comma-separated list of CC emails"}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="BCC Emails"
+                          value={createData.bccEmails.join(', ')}
+                          onChange={(e) => handleEmailFieldChange('bccEmails', e.target.value)}
+                          size="small"
+                          placeholder="bcc1@example.com, bcc2@example.com"
+                          error={!!emailErrors.bccEmails}
+                          helperText={emailErrors.bccEmails || "Comma-separated list of BCC emails"}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Max Recipients"
+                          type="number"
+                          value={createData.maxRecipients}
+                          onChange={(e) => setCreateData({ ...createData, maxRecipients: parseInt(e.target.value) || 50 })}
+                          size="small"
+                          inputProps={{ min: 1, max: 1000 }}
+                          helperText="Maximum number of recipients allowed (1-1000)"
                         />
                       </Grid>
                       <Grid item xs={12}>

@@ -16,7 +16,19 @@ const createTemplateSchema = Joi.object({
   subject: Joi.string().min(1).max(255).required(),
   content: Joi.string().min(1).required(),
   fromEmail: Joi.string().email().max(255).optional().allow(''),
-  toEmail: Joi.string().email().max(255).optional().allow(''),
+  toEmails: Joi.array().items(Joi.string().email().max(255)).max(50).optional().default([]),
+  ccEmails: Joi.array().items(Joi.string().email().max(255)).max(50).optional().default([]),
+  bccEmails: Joi.array().items(Joi.string().email().max(255)).max(50).optional().default([]),
+  maxRecipients: Joi.number().integer().min(1).max(1000).optional().default(50),
+  attachments: Joi.array().items(
+    Joi.object({
+      name: Joi.string().max(255).required(),
+      type: Joi.string().max(100).required(),
+      size: Joi.number().integer().min(0).max(25 * 1024 * 1024).required(), // 25MB max
+      url: Joi.string().uri().optional(),
+      base64: Joi.string().optional()
+    })
+  ).max(10).optional().default([]),
   category: Joi.string().max(100).optional().allow(''),
   isDefault: Joi.boolean().optional().default(false)
 });
@@ -26,7 +38,19 @@ const updateTemplateSchema = Joi.object({
   subject: Joi.string().min(1).max(255).optional(),
   content: Joi.string().min(1).optional(),
   fromEmail: Joi.string().email().max(255).optional().allow(''),
-  toEmail: Joi.string().email().max(255).optional().allow(''),
+  toEmails: Joi.array().items(Joi.string().email().max(255)).max(50).optional(),
+  ccEmails: Joi.array().items(Joi.string().email().max(255)).max(50).optional(),
+  bccEmails: Joi.array().items(Joi.string().email().max(255)).max(50).optional(),
+  maxRecipients: Joi.number().integer().min(1).max(1000).optional(),
+  attachments: Joi.array().items(
+    Joi.object({
+      name: Joi.string().max(255).required(),
+      type: Joi.string().max(100).required(),
+      size: Joi.number().integer().min(0).max(25 * 1024 * 1024).required(),
+      url: Joi.string().uri().optional(),
+      base64: Joi.string().optional()
+    })
+  ).max(10).optional(),
   category: Joi.string().max(100).optional().allow(''),
   isDefault: Joi.boolean().optional()
 });
@@ -67,7 +91,11 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
         name: true,
         subject: true,
         fromEmail: true,
-        toEmail: true,
+        toEmails: true,
+        ccEmails: true,
+        bccEmails: true,
+        maxRecipients: true,
+        attachments: true,
         category: true,
         isDefault: true,
         createdAt: true,
