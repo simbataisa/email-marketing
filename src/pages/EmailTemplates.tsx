@@ -63,12 +63,15 @@ import {
 import axios from 'axios';
 import { variableService, type TemplateVariable, type GlobalVariable, type VariableValue } from '../services/variableService';
 import { useAuthStore } from '../store/authStore';
+import EmailPreviewDialog from '../components/EmailPreviewDialog';
 
 interface EmailTemplate {
   id: string;
   name: string;
   subject: string;
   content: string;
+  fromEmail?: string;
+  toEmail?: string;
   category: string;
   isDefault: boolean;
   createdAt: string;
@@ -79,6 +82,8 @@ interface CreateTemplateData {
   name: string;
   subject: string;
   content: string;
+  fromEmail: string;
+  toEmail: string;
   category: string;
   isDefault: boolean;
 }
@@ -99,6 +104,8 @@ const EmailTemplates: React.FC = () => {
     name: '',
     subject: '',
     content: '',
+    fromEmail: '',
+    toEmail: '',
     category: '',
     isDefault: false
   });
@@ -108,9 +115,6 @@ const EmailTemplates: React.FC = () => {
     severity: 'success' | 'error' | 'info' | 'warning';
   }>({ open: false, message: '', severity: 'success' });
   
-  const [previewVariables, setPreviewVariables] = useState<Record<string, string>>({});
-  const [templateVariables, setTemplateVariables] = useState<TemplateVariable[]>([]);
-  const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>([]);
   const [variableValues, setVariableValues] = useState<VariableValue[]>([]);
   
   // Edit mode variable states
@@ -164,7 +168,7 @@ const EmailTemplates: React.FC = () => {
   const fetchGlobalVariables = async () => {
     try {
       const variables = await variableService.global.getAll();
-      setGlobalVariables(variables);
+      setEditGlobalVariables(variables);
     } catch (err: any) {
       console.error('Failed to fetch global variables:', err);
     }
@@ -238,7 +242,7 @@ const EmailTemplates: React.FC = () => {
       }
       
       setCreateDialogOpen(false);
-      setCreateData({ name: '', subject: '', content: '', category: '', isDefault: false });
+      setCreateData({ name: '', subject: '', content: '', fromEmail: '', toEmail: '', category: '', isDefault: false });
       showSnackbar(`Template "${createData.name}" created successfully!`, 'success');
       fetchTemplates();
     } catch (err: any) {
@@ -263,7 +267,7 @@ const EmailTemplates: React.FC = () => {
       }
       
       setEditDialogOpen(false);
-      setCreateData({ name: '', subject: '', content: '', category: '', isDefault: false });
+      setCreateData({ name: '', subject: '', content: '', fromEmail: '', toEmail: '', category: '', isDefault: false });
       showSnackbar(`Template "${createData.name}" updated successfully!`, 'success');
       fetchTemplates();
       handleMenuClose();
@@ -320,6 +324,8 @@ const EmailTemplates: React.FC = () => {
           name: selectedTemplate.name,
           subject: selectedTemplate.subject,
           content: selectedTemplate.content,
+          fromEmail: selectedTemplate.fromEmail || '',
+          toEmail: selectedTemplate.toEmail || '',
           category: selectedTemplate.category,
           isDefault: selectedTemplate.isDefault
         });
@@ -364,65 +370,9 @@ const EmailTemplates: React.FC = () => {
     handleMenuClose();
   };
 
-  const openPreviewDialog = async () => {
-    if (selectedTemplate) {
-      try {    
-        // Load template-specific variables
-        const templateVars = await variableService.template.getByTemplate(selectedTemplate.id);
-        setTemplateVariables(templateVars);
-        
-        // Load all global variables
-        const globalVars = await variableService.global.getAll();
-        console.log('Global variables loaded:', globalVars);
-        
-        // Extract variables from template content (same approach as edit dialog)
-        const extractedVars = extractVariables(selectedTemplate.content, selectedTemplate.subject);
-        
-        // Initialize preview variables (same logic as edit dialog)
-        const initPreviewVars: Record<string, string> = {};
-        extractedVars.forEach(variable => {
-          const templateVar = templateVars.find(tv => tv.name === variable);
-          const globalVar = globalVars.find(gv => gv.name === variable);
-          const currentVar = templateVar || globalVar;
-          initPreviewVars[variable] = currentVar?.defaultValue || getDefaultValue(variable);
-        });
-        
-        console.log('Final preview variables:', initPreviewVars);
-        setPreviewVariables(initPreviewVars);
-        
-        // Close menu first, then open dialog
-        setAnchorEl(null);
-        
-        // Wait for state to update before opening dialog
-        setTimeout(() => {
-          setPreviewDialogOpen(true);
-          showSnackbar(`Previewing template "${selectedTemplate.name}"`, 'info');
-        }, 100);
-      } catch (err: any) {
-        console.error('Failed to fetch template variables:', err);
-        // Fallback to basic extraction (same as edit dialog fallback)
-        const variables = extractVariables(selectedTemplate.content, selectedTemplate.subject);
-        const initialVariables: Record<string, string> = {};
-        
-        variables.forEach(variable => {
-          initialVariables[variable] = getDefaultValue(variable);
-        });
-        
-        setPreviewVariables(initialVariables);
-        
-        // Close menu first, then open dialog
-        setAnchorEl(null);
-        
-        // Wait for state to update before opening dialog
-        setTimeout(() => {
-          setPreviewDialogOpen(true);
-          showSnackbar(`Previewing template "${selectedTemplate.name}" (basic mode)`, 'info');
-        }, 100);
-      }
-    } else {
-      setAnchorEl(null);
-      setPreviewDialogOpen(true);
-    }
+  const openPreviewDialog = () => {
+    setAnchorEl(null);
+    setPreviewDialogOpen(true);
   };
 
   const openDeleteDialog = () => {
@@ -430,62 +380,7 @@ const EmailTemplates: React.FC = () => {
     handleMenuClose();
   };
 
-  const getPreviewContent = () => {
-    if (!selectedTemplate || !selectedTemplate.content) return '';
-    
-    let content = selectedTemplate.content;
-    
-    // Replace all variables found in the template
-    Object.entries(previewVariables).forEach(([variable, value]) => {
-      const regex = new RegExp(`{{${variable}}}`, 'g');
-      content = content.replace(regex, value || `[${variable}]`);
-    });
-    
-    return content;
-  };
 
-  const handleVariableChange = async (variableName: string, value: string) => {
-    // Update local state immediately for responsive UI
-    setPreviewVariables(prev => ({ ...prev, [variableName]: value }));
-    
-    try {
-      // Find if this is a template variable or global variable
-      const templateVar = templateVariables.find(tv => tv.name === variableName);
-      const globalVar = globalVariables.find(gv => gv.name === variableName);
-      
-      if (templateVar) {
-        // Check if user already has a value for this template variable
-        const existingValue = variableValues.find(v => v.templateVariableId === templateVar.id);
-        
-        if (existingValue) {
-          // Update existing value
-          const updatedValue = await variableService.values.update(existingValue.id, { value });
-          setVariableValues(prev => prev.map(v => v.id === existingValue.id ? updatedValue : v));
-        } else {
-          // Create new value
-          const newValue = await variableService.values.create({ templateVariableId: templateVar.id, value });
-          setVariableValues(prev => [...prev, newValue]);
-        }
-      } else if (globalVar) {
-        // Check if user already has a value for this global variable
-        const existingValue = variableValues.find(v => v.globalVariableId === globalVar.id);
-        
-        if (existingValue) {
-          // Update existing value
-          const updatedValue = await variableService.values.update(existingValue.id, { value });
-          setVariableValues(prev => prev.map(v => v.id === existingValue.id ? updatedValue : v));
-        } else {
-          // Create new value
-          const newValue = await variableService.values.create({ globalVariableId: globalVar.id, value });
-          setVariableValues(prev => [...prev, newValue]);
-        }
-      }
-      // If it's neither template nor global variable, just keep it in local state
-    } catch (err: any) {
-      console.error('Failed to save variable value:', err);
-      // Keep the local state change even if save fails
-    }
-  };
 
   // Edit mode variable handlers
   const handleEditVariableChange = (variable: string, value: string) => {
@@ -853,6 +748,29 @@ const EmailTemplates: React.FC = () => {
                   margin="normal"
                 />
               </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="From Email"
+                  type="email"
+                  value={createData.fromEmail}
+                  onChange={(e) => setCreateData({ ...createData, fromEmail: e.target.value })}
+                  margin="normal"
+                  placeholder="sender@example.com"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="To Email (Default)"
+                  type="email"
+                  value={createData.toEmail}
+                  onChange={(e) => setCreateData({ ...createData, toEmail: e.target.value })}
+                  margin="normal"
+                  placeholder="recipient@example.com"
+                  helperText="Default recipient email (can be overridden when sending)"
+                />
+              </Grid>
               <Grid item xs={12}>
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -980,6 +898,29 @@ const EmailTemplates: React.FC = () => {
                             setEditPreviewVariables(newPreviewVars);
                           }}
                           size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="From Email"
+                          type="email"
+                          value={createData.fromEmail}
+                          onChange={(e) => setCreateData({ ...createData, fromEmail: e.target.value })}
+                          size="small"
+                          placeholder="sender@example.com"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="To Email (Default)"
+                          type="email"
+                          value={createData.toEmail}
+                          onChange={(e) => setCreateData({ ...createData, toEmail: e.target.value })}
+                          size="small"
+                          placeholder="recipient@example.com"
+                          helperText="Default recipient email (can be overridden when sending)"
                         />
                       </Grid>
                       <Grid item xs={12}>
@@ -1284,227 +1225,15 @@ const EmailTemplates: React.FC = () => {
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => {
-        setPreviewDialogOpen(false);
-        setSelectedTemplate(null);
-      }} maxWidth="xl" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">
-              Template Preview: {selectedTemplate?.name}
-            </Typography>
-            <Chip 
-              label={selectedTemplate?.category || 'Uncategorized'} 
-              size="small" 
-              variant="outlined"
-            />
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 1 }}>
-            <Grid container spacing={3}>
-              {/* Variables Input Section */}
-              <Grid item xs={12} md={5}>
-                <Card variant="outlined" sx={{ height: 'fit-content' }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CategoryIcon color="primary" />
-                      Variables
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                      Customize variable values to see how they appear in your email template.
-                    </Typography>
-                    
-                    {(() => {
-                      const extractedVars = selectedTemplate ? extractVariables(selectedTemplate.content, selectedTemplate.subject) : [];
-                      console.log('Preview dialog - extracted vars:', extractedVars);
-                      console.log('Preview dialog - extracted vars length:', extractedVars.length);
-                      console.log('Preview dialog - selectedTemplate:', selectedTemplate);
-                      console.log('Preview dialog - previewVariables:', previewVariables);
-                      console.log('Preview dialog - Object.keys(previewVariables):', Object.keys(previewVariables));
-                      // Use extracted variables directly instead of relying on state
-                      return selectedTemplate && extractedVars.length > 0;
-                    })() ? (
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {Object.keys(previewVariables).map((variable) => {
-                          // Find if this is a template variable or global variable
-                          const templateVar = templateVariables.find(tv => tv.name === variable);
-                          const globalVar = globalVariables.find(gv => gv.name === variable);
-                          const currentVar = templateVar || globalVar;
-                          
-                          // Format variable name for display
-                          const formatLabel = (varName: string) => {
-                            return varName
-                              .replace(/([A-Z])/g, ' $1')
-                              .replace(/^./, str => str.toUpperCase())
-                              .trim();
-                          };
-                          
-                          const displayName = currentVar?.displayName || formatLabel(variable);
-                          const description = currentVar?.description;
-                          const defaultValue = currentVar?.defaultValue || getDefaultValue(variable);
-                          const variableType = currentVar?.type || 'text';
-                          
-                          return (
-                            <Box key={variable} sx={{ mb: 2 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                  {displayName}
-                                </Typography>
-                                <Chip 
-                                  label={templateVar ? 'Template' : globalVar ? 'Global' : 'Custom'} 
-                                  size="small" 
-                                  color={templateVar ? 'primary' : globalVar ? 'secondary' : 'default'}
-                                  variant="outlined"
-                                />
-                                <Chip 
-                                  label={variableType} 
-                                  size="small" 
-                                  variant="outlined"
-                                />
-                              </Box>
-                              
-                              {description && (
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                  {description}
-                                </Typography>
-                              )}
-                              
-                              <TextField
-                                label={`{{${variable}}}`}
-                                value={previewVariables[variable] || ''}
-                                onChange={(e) => handleVariableChange(variable, e.target.value)}
-                                size="small"
-                                fullWidth
-                                placeholder={defaultValue}
-                                type={variableType === 'number' ? 'number' : variableType === 'email' ? 'email' : variableType === 'url' ? 'url' : variableType === 'date' ? 'date' : 'text'}
-                                helperText={`Default: ${defaultValue}`}
-                                InputLabelProps={variableType === 'date' ? { shrink: true } : undefined}
-                              />
-                            </Box>
-                          );
-                        })}
-                        
-                        <Box sx={{ mt: 2, p: 2, backgroundColor: '#f8f9fa', borderRadius: 1 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            <strong>Variable Types:</strong><br/>
-                            • <strong>Template:</strong> Specific to this template<br/>
-                            • <strong>Global:</strong> Reusable across all templates<br/>
-                            • <strong>Custom:</strong> Extracted from template content
-                          </Typography>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <Alert severity="info">
-                         <Typography variant="body2">
-                           No variables found in this template. Add variables like {'{{firstName}}'} or {'{{companyName}}'} to your template content to make it dynamic.
-                         </Typography>
-                       </Alert>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-              
-              {/* Preview Section */}
-              <Grid item xs={12} md={7}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <VisibilityIcon color="primary" />
-                      Email Preview
-                    </Typography>
-                    
-                    {/* Email Header */}
-                    <Box sx={{ mb: 3, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            SUBJECT LINE
-                          </Typography>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-                            {(() => {
-                              if (!selectedTemplate) return 'No subject';
-                              let subject = selectedTemplate.subject || '';
-                              Object.entries(previewVariables).forEach(([variable, value]) => {
-                                const regex = new RegExp(`{{${variable}}}`, 'g');
-                                subject = subject.replace(regex, value || `[${variable}]`);
-                              });
-                              return subject || 'No subject';
-                            })()}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            FROM
-                          </Typography>
-                          <Typography variant="body2">
-                            {previewVariables.fromName || '[fromName]'}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            TO
-                          </Typography>
-                          <Typography variant="body2">
-                            {previewVariables.email || '[email]'}
-                          </Typography>
-                        </Grid>
-                      </Grid>
-                    </Box>
-                    
-                    {/* Email Content */}
-                    <Box
-                      sx={{
-                        border: '1px solid #e0e0e0',
-                        borderRadius: 1,
-                        p: 3,
-                        backgroundColor: '#ffffff',
-                        maxHeight: '600px',
-                        overflow: 'auto',
-                        minHeight: '400px',
-                        fontFamily: 'Arial, sans-serif',
-                        lineHeight: 1.6
-                      }}
-                    >
-                      <div dangerouslySetInnerHTML={{ __html: getPreviewContent() }} />
-                    </Box>
-                    
-                    {/* Preview Actions */}
-                    <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                      <Button 
-                        size="small" 
-                        variant="outlined"
-                        onClick={() => {
-                          // Reset to default values
-                          const resetVariables: Record<string, string> = {};
-                          extractVariables(selectedTemplate?.content || '', selectedTemplate?.subject || '').forEach(variable => {
-                            const templateVar = templateVariables.find(tv => tv.name === variable);
-                            const globalVar = globalVariables.find(gv => gv.name === variable);
-                            const currentVar = templateVar || globalVar;
-                            resetVariables[variable] = currentVar?.defaultValue || getDefaultValue(variable);
-                          });
-                          setPreviewVariables(resetVariables);
-                          showSnackbar('Variables reset to default values', 'info');
-                        }}
-                      >
-                        Reset to Defaults
-                      </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setPreviewDialogOpen(false);
-            setSelectedTemplate(null);
-          }} size="large">
-            Close Preview
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <EmailPreviewDialog
+        open={previewDialogOpen}
+        onClose={() => {
+          setPreviewDialogOpen(false);
+          setSelectedTemplate(null);
+        }}
+        template={selectedTemplate}
+        showSnackbar={showSnackbar}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>

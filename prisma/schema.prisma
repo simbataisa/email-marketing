@@ -36,6 +36,8 @@ model EmailTemplate {
   name        String   @db.VarChar(255)
   subject     String   @db.VarChar(255)
   content     String   @db.Text
+  fromEmail   String?  @map("from_email") @db.VarChar(255)
+  toEmail     String?  @map("to_email") @db.VarChar(255)
   category    String?  @db.VarChar(100)
   isDefault   Boolean  @default(false) @map("is_default")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

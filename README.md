@@ -20,6 +20,11 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
   - Template-specific variables for customization
   - Variable values for personalized email content
   - Dynamic content insertion and management
+- ✅ **LATEST**: Enhanced email template functionality
+  - Reusable EmailPreviewDialog component for consistent preview experience
+  - Backend API support for From and To email fields in templates
+  - Improved code maintainability and component reusability
+  - Real-time email preview with variable substitution
 
 ## 📋 Table of Contents
 
@@ -48,6 +53,9 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
   - Drag-and-drop template selection in campaign wizard
   - Personalization tags support ({{firstName}}, {{lastName}}, {{email}})
   - Template usage tracking and analytics
+  - From and To email field support for template-specific sender/recipient configuration
+  - Enhanced preview dialog with real-time variable substitution and email formatting
+  - Reusable preview component for consistent user experience across the application
 - **Variable Management**: Comprehensive system for managing dynamic content
   - Global variables: Reusable across all email templates
   - Template-specific variables: Custom variables for individual templates
@@ -76,6 +84,17 @@ A comprehensive email marketing platform built with React, TypeScript, Express.j
 - JWT authentication
 - Nodemailer for email sending
 - Multer for file uploads
+
+### Component Architecture
+- **Reusable Components**: Modular design with shared components for consistency
+  - `EmailPreviewDialog`: Centralized email preview functionality with variable management
+  - `Layout`: Consistent application layout with navigation
+  - `ProtectedRoute`: Authentication-based route protection
+- **Service Layer**: Organized API communication with dedicated services
+  - `variableService`: Manages template variables, global variables, and variable values
+  - `authStore`: Zustand-based authentication state management
+- **Type Safety**: Comprehensive TypeScript interfaces for all data models
+- **Code Organization**: Clean separation of concerns with dedicated folders for components, pages, services, and utilities
 
 ## 📋 Prerequisites
 

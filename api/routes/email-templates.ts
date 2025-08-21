@@ -15,6 +15,8 @@ const createTemplateSchema = Joi.object({
   name: Joi.string().min(1).max(255).required(),
   subject: Joi.string().min(1).max(255).required(),
   content: Joi.string().min(1).required(),
+  fromEmail: Joi.string().email().max(255).optional().allow(''),
+  toEmail: Joi.string().email().max(255).optional().allow(''),
   category: Joi.string().max(100).optional().allow(''),
   isDefault: Joi.boolean().optional().default(false)
 });
@@ -23,6 +25,8 @@ const updateTemplateSchema = Joi.object({
   name: Joi.string().min(1).max(255).optional(),
   subject: Joi.string().min(1).max(255).optional(),
   content: Joi.string().min(1).optional(),
+  fromEmail: Joi.string().email().max(255).optional().allow(''),
+  toEmail: Joi.string().email().max(255).optional().allow(''),
   category: Joi.string().max(100).optional().allow(''),
   isDefault: Joi.boolean().optional()
 });
@@ -62,6 +66,8 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
         id: true,
         name: true,
         subject: true,
+        fromEmail: true,
+        toEmail: true,
         category: true,
         isDefault: true,
         createdAt: true,
